@@ -14,6 +14,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Format code: `cargo fmt`
 - Run clippy lints: `cargo clippy`
 
+## Commit Guidelines
+- Always run `cargo fmt` and `cargo clippy` before committing any changes
+- Fix any formatting or linting issues before finalizing the commit
+
 ## Code Style Guidelines
 - Use Rust 2021 edition idioms
 - Document public APIs with doc comments (`//!` for modules, `///` for items)

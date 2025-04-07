@@ -31,10 +31,10 @@ impl AsciiHistogram {
         if value < self.min || value >= self.max {
             return;
         }
-        
+
         let bin_width = (self.max - self.min) / self.bins.len() as f64;
         let bin_idx = ((value - self.min) / bin_width) as usize;
-        
+
         if bin_idx < self.bins.len() {
             self.bins[bin_idx] += 1;
         }
@@ -50,27 +50,30 @@ impl AsciiHistogram {
         let max_count = *self.bins.iter().max().unwrap_or(&1);
         let max_bar_width = 40;
         let bin_width = (self.max - self.min) / self.bins.len() as f64;
-        
+
         let mut result = String::new();
         result.push_str("Magnitude Histogram\n");
         result.push_str("==================\n\n");
-        
+
         for (i, &count) in self.bins.iter().enumerate() {
             let lower = self.min + i as f64 * bin_width;
             let upper = lower + bin_width;
-            
+
             let bar_length = if count > 0 {
                 (count as f64 / max_count as f64 * max_bar_width as f64).round() as usize
             } else {
                 0
             };
-            
+
             result.push_str(&format!(
                 "{:5.1} - {:5.1} [{:8}] {}\n",
-                lower, upper, count, "#".repeat(bar_length)
+                lower,
+                upper,
+                count,
+                "#".repeat(bar_length)
             ));
         }
-        
+
         result
     }
 }
@@ -143,10 +146,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n{}", hist.format());
 
     // Calculate stars visible to naked eye (magnitude < 6.0)
-    let naked_eye_count: usize = hist.bins.iter()
+    let naked_eye_count: usize = hist
+        .bins
+        .iter()
         .take(7) // Bins for magnitudes -1 to 6
         .sum();
-    
+
     let total_count: usize = hist.bins.iter().sum();
     let percentage = if total_count > 0 {
         (naked_eye_count as f64 / total_count as f64) * 100.0
