@@ -8,7 +8,7 @@ repository = "https://github.com/meawoppl/starfield"
 license = "MIT"
 readme = "README.md"
 keywords = ["astronomy", "catalog", "stars", "celestial", "skyfield"]
-categories = ["science", "astronomy"]
+categories = ["science"]
 
 [dependencies]
 # Core astronomical calculations
