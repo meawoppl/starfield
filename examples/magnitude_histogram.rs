@@ -1,7 +1,7 @@
 //! Tool for analyzing magnitude distributions in Gaia catalog files
 //!
 //! This example processes downloaded Gaia catalog files and generates
-//! a histogram of apparent magnitudes.
+//! a simple ASCII histogram of apparent magnitudes.
 //!
 //! Usage:
 //!   cargo run --example magnitude_histogram
@@ -10,7 +10,73 @@ use std::time::Instant;
 
 use starfield::catalogs::{GaiaCatalog, StarCatalog};
 use starfield::data::list_cached_gaia_files;
-use viz::histogram::{Histogram, HistogramConfig, Scale};
+
+/// Simple ASCII histogram generator
+struct AsciiHistogram {
+    min: f64,
+    max: f64,
+    bins: Vec<usize>,
+}
+
+impl AsciiHistogram {
+    fn new(min: f64, max: f64, num_bins: usize) -> Self {
+        Self {
+            min,
+            max,
+            bins: vec![0; num_bins],
+        }
+    }
+
+    fn add(&mut self, value: f64) {
+        if value < self.min || value >= self.max {
+            return;
+        }
+
+        let bin_width = (self.max - self.min) / self.bins.len() as f64;
+        let bin_idx = ((value - self.min) / bin_width) as usize;
+
+        if bin_idx < self.bins.len() {
+            self.bins[bin_idx] += 1;
+        }
+    }
+
+    fn add_all(&mut self, values: impl IntoIterator<Item = f64>) {
+        for value in values {
+            self.add(value);
+        }
+    }
+
+    fn format(&self) -> String {
+        let max_count = *self.bins.iter().max().unwrap_or(&1);
+        let max_bar_width = 40;
+        let bin_width = (self.max - self.min) / self.bins.len() as f64;
+
+        let mut result = String::new();
+        result.push_str("Magnitude Histogram\n");
+        result.push_str("==================\n\n");
+
+        for (i, &count) in self.bins.iter().enumerate() {
+            let lower = self.min + i as f64 * bin_width;
+            let upper = lower + bin_width;
+
+            let bar_length = if count > 0 {
+                (count as f64 / max_count as f64 * max_bar_width as f64).round() as usize
+            } else {
+                0
+            };
+
+            result.push_str(&format!(
+                "{:5.1} - {:5.1} [{:8}] {}\n",
+                lower,
+                upper,
+                count,
+                "#".repeat(bar_length)
+            ));
+        }
+
+        result
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Gaia Magnitude Histogram Generator");
@@ -27,23 +93,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Found {} Gaia files", gaia_files.len());
 
     // Define magnitude range
-    let min_mag = -1.5;
-    let max_mag = 21.0;
-    let num_bins = 45; // 0.5 magnitude bins
+    let min_mag = -1.0;
+    let max_mag = 30.0;
+    let num_bins = 31; // 1 magnitude per bin from -1 to 30
 
     // Create the histogram
-    let mut hist = Histogram::new_equal_bins(min_mag..max_mag, num_bins)?;
-
-    // Set up configuration for standard display
-    let mut config = HistogramConfig::default();
-    config.title = Some("Gaia Magnitude Distribution".to_string());
-    config.max_bar_width = 40;
-    config.show_empty_bins = true;
-    hist = hist.with_config(config);
+    let mut hist = AsciiHistogram::new(min_mag, max_mag, num_bins);
 
     // Process each file
     let start_time = Instant::now();
-
     let mut total_stars: u64 = 0;
 
     for (i, file_path) in gaia_files.iter().enumerate() {
@@ -54,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             file_path.display()
         );
 
-        // Load catalog with no magnitude limit (use the highest possible value)
+        // Load catalog with no magnitude limit
         match GaiaCatalog::from_file(file_path, f64::MAX) {
             Ok(catalog) => {
                 // Extract magnitudes and add to histogram
@@ -84,59 +142,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("Total stars analyzed: {}", total_stars);
 
-    // Get references to counts and bin_edges before we move the histogram
-    let counts = hist.counts().to_vec();
-    let bin_edges = hist.bin_edges().to_vec();
-
-    // Print standard histogram
-    println!("\n{}", hist.format()?);
-
-    // Create log-scaled histogram for better visualization of distribution
-    let mut log_config = HistogramConfig::default();
-    log_config.title = Some("Gaia Magnitude Distribution (Log Scale)".to_string());
-    log_config.scale = Scale::Log10;
-    log_config.max_bar_width = 40;
-    log_config.show_empty_bins = true;
-
-    let log_hist = hist.with_config(log_config);
-    println!("\n{}", log_hist.format()?);
-
-    // Find brightest stars (first non-empty bin)
-    if let Some((idx, _)) = counts.iter().enumerate().find(|(_, &count)| count > 0) {
-        println!(
-            "\nBrightest stars found: magnitude range {:.2} - {:.2}",
-            bin_edges[idx],
-            bin_edges[idx + 1]
-        );
-    }
-
-    // Find most common magnitude range
-    if let Some(max_idx) = counts
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, &count)| count)
-        .map(|(idx, _)| idx)
-    {
-        println!(
-            "Most common magnitude range: {:.2} - {:.2} ({} stars)",
-            bin_edges[max_idx],
-            bin_edges[max_idx + 1],
-            counts[max_idx]
-        );
-    }
+    // Print histogram
+    println!("\n{}", hist.format());
 
     // Calculate stars visible to naked eye (magnitude < 6.0)
-    let naked_eye_idx = bin_edges
+    let naked_eye_count: usize = hist
+        .bins
         .iter()
-        .position(|&edge| edge >= 6.0)
-        .unwrap_or(bin_edges.len());
+        .take(7) // Bins for magnitudes -1 to 6
+        .sum();
 
-    let naked_eye_stars: u64 = counts.iter().take(naked_eye_idx).sum();
-    let total_count: u64 = counts.iter().sum();
-    let percentage = (naked_eye_stars as f64 / total_count as f64) * 100.0;
+    let total_count: usize = hist.bins.iter().sum();
+    let percentage = if total_count > 0 {
+        (naked_eye_count as f64 / total_count as f64) * 100.0
+    } else {
+        0.0
+    };
 
     println!("\nStars brighter than magnitude 6 (visible to naked eye):");
-    println!("  {} stars ({:.4}% of total)", naked_eye_stars, percentage);
+    println!("  {} stars ({:.4}% of total)", naked_eye_count, percentage);
 
     Ok(())
 }

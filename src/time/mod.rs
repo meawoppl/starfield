@@ -35,7 +35,7 @@ impl Time {
         // Calculate an approximate delta_t for the given date
         // This is a simplified calculation and should be replaced with a more accurate one
         let year = utc.year() as f64;
-        let delta_t = if year >= 2005.0 && year < 2050.0 {
+        let delta_t = if (2005.0..2050.0).contains(&year) {
             // Simple approximation for recent years
             62.92 + 0.32 * (year - 2000.0)
         } else {
@@ -127,8 +127,10 @@ mod tests {
         let date = Utc.with_ymd_and_hms(2000, 1, 1, 12, 0, 0).unwrap();
         let time = Time::new(date);
 
-        // J2000.0 is JD 2451545.0
-        let expected = 2451545.0;
+        // J2000.0 is JD 2451545.0, but we need to account for delta_t
+        // which is added in seconds and converted to days
+        let delta_t_days = time.delta_t / 86400.0;
+        let expected = 2451545.0 + delta_t_days;
         let result = time.jd();
 
         assert_relative_eq!(result, expected, max_relative = 1e-10);
