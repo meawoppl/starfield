@@ -1,7 +1,7 @@
 //! Time module for astronomical time calculations
 
-use std::fmt;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
+use std::fmt;
 use thiserror::Error;
 
 /// Error type for time operations
@@ -60,10 +60,10 @@ impl Time {
     pub fn tt_seconds_from_j2000(&self) -> f64 {
         // J2000.0 is 2000-01-01T12:00:00Z
         let j2000 = Utc.with_ymd_and_hms(2000, 1, 1, 12, 0, 0).unwrap();
-        
+
         // Calculate seconds since J2000.0 in UTC
         let seconds_since_j2000 = (self.utc - j2000).num_seconds() as f64;
-        
+
         // Add delta_t to convert to TT
         seconds_since_j2000 + self.delta_t
     }
@@ -72,17 +72,22 @@ impl Time {
     pub fn jd(&self) -> f64 {
         // J2000.0 is JD 2451545.0
         let j2000_jd = 2451545.0;
-        
+
         // Convert seconds to days
         let days_since_j2000 = self.tt_seconds_from_j2000() / 86400.0;
-        
+
         j2000_jd + days_since_j2000
     }
 }
 
 impl fmt::Display for Time {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} (ΔT: {:.2}s)", self.utc.format("%Y-%m-%d %H:%M:%S UTC"), self.delta_t)
+        write!(
+            f,
+            "{} (ΔT: {:.2}s)",
+            self.utc.format("%Y-%m-%d %H:%M:%S UTC"),
+            self.delta_t
+        )
     }
 }
 
@@ -95,9 +100,13 @@ mod tests {
     fn test_time_creation() {
         let date = Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap();
         let time = Time::new(date);
-        
+
         // Test delta_t calculation for 2020
-        assert_relative_eq!(time.delta_t, 62.92 + 0.32 * (2020.0 - 2000.0), epsilon = 0.01);
+        assert_relative_eq!(
+            time.delta_t,
+            62.92 + 0.32 * (2020.0 - 2000.0),
+            epsilon = 0.01
+        );
     }
 
     #[test]
@@ -105,11 +114,11 @@ mod tests {
         // 2020-01-01 is 20 years after J2000
         let date = Utc.with_ymd_and_hms(2020, 1, 1, 12, 0, 0).unwrap();
         let time = Time::new(date);
-        
+
         // Expected: 20 years in seconds plus delta_t
         let expected = 20.0 * 365.25 * 24.0 * 3600.0 + time.delta_t;
         let result = time.tt_seconds_from_j2000();
-        
+
         assert_relative_eq!(result, expected, epsilon = 0.1);
     }
 
@@ -117,11 +126,11 @@ mod tests {
     fn test_julian_date() {
         let date = Utc.with_ymd_and_hms(2000, 1, 1, 12, 0, 0).unwrap();
         let time = Time::new(date);
-        
+
         // J2000.0 is JD 2451545.0
         let expected = 2451545.0;
         let result = time.jd();
-        
+
         assert_relative_eq!(result, expected, max_relative = 1e-10);
     }
 }

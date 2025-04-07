@@ -3,9 +3,9 @@
 //! This crate provides high-precision astronomical calculations for positions
 //! of stars, planets, and other celestial objects.
 
+use crate::catalogs::StarCatalog;
 use std::path::Path;
 use thiserror::Error;
-use crate::catalogs::StarCatalog;
 
 pub mod almanac;
 pub mod catalogs;

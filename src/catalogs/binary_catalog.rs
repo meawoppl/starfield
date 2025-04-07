@@ -3,8 +3,8 @@
 //! This module provides a compact binary format for storing star catalogs with
 //! minimal fields (ID, position, magnitude), optimized for size and loading speed.
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crate::coordinates::RaDec;
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
