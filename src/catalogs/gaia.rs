@@ -2,7 +2,6 @@
 //!
 //! This module provides functionality for loading and using the Gaia star catalog.
 
-use crate::coordinates::RaDec;
 use nalgebra as na;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
