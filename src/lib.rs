@@ -25,6 +25,7 @@ pub mod units;
 
 // Re-export commonly used types
 pub use coordinates::RaDec;
+pub use time::{CalendarTuple, Time, Timescale};
 
 /// Main error type for the starfield library
 #[derive(Debug, Error)]
@@ -130,6 +131,13 @@ impl Loader {
     pub fn load_ephemeris(&self) -> Result<planetlib::Ephemeris> {
         // This is a placeholder until we implement proper ephemeris calculations
         Ok(planetlib::Ephemeris::new())
+    }
+
+    /// Load a timescale for time conversions
+    pub fn timescale(&self) -> time::Timescale {
+        // For now, we return a default timescale with basic data
+        // In the future, this could load delta_t data and leap second files
+        time::Timescale::default()
     }
 }
 

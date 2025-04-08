@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commit Guidelines
 - Always run `cargo fmt` and `cargo clippy` before committing any changes
 - Fix any formatting or linting issues before finalizing the commit
+- Do not include attribution to Claude in commit messages
 
 ## Code Style Guidelines
 - Use Rust 2021 edition idioms
