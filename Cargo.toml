@@ -40,3 +40,5 @@ criterion = "0.5"           # Benchmarking
 approx = "0.5"              # Approximate equality assertions
 rstest = "0.18"             # Test fixtures and parameterization
 tempfile = "3.8"            # Temporary file creation for tests
+# Use PyO3 without auto-initialize to prevent linking errors
+pyo3 = { version = "0.20" } # Python bindings for testing against Python implementation
