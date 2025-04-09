@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  PYTHON_VERSION: "3.10.8"
 
 jobs:
   test:
@@ -35,8 +36,48 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
       
-      - name: Run tests
-        run: cargo test
+      - name: Run tests (excluding Python comparison tests)
+        run: cargo test -- --skip python_comparison
+        
+  python-comparison:
+    name: Python Comparison Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install skyfield pytest
+          python -c "import skyfield; print(f'Skyfield version: {skyfield.__version__}')"
+      
+      - name: Verify Skyfield installation
+        run: |
+          chmod +x test_skyfield.py
+          python test_skyfield.py
+      
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "starfield-build-cache"
+      
+      - name: Run Python comparison tests
+        run: cargo test python_comparison
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         
   build:
     name: Build
