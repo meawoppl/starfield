@@ -21,12 +21,16 @@ fn run_python_script(script: &str) -> Result<String, String> {
     // Make it executable
     let _ = Command::new("chmod").arg("+x").arg(script_path).output();
 
+    // Determine which Python executable to use
+    let python_cmd = env::var("PYTHON_COMMAND").unwrap_or_else(|_| "python".to_string());
+    println!("Using Python command: {}", python_cmd);
+    
     // Run the script
-    let output = match Command::new("python").arg(script_path).output() {
+    let output = match Command::new(&python_cmd).arg(script_path).output() {
         Ok(output) => output,
         Err(e) => {
             let _ = fs::remove_file(script_path);
-            return Err(format!("Failed to execute Python script: {}", e));
+            return Err(format!("Failed to execute Python script with {}: {}", python_cmd, e));
         }
     };
 
@@ -106,7 +110,11 @@ fn test_python_skyfield_available() {
     // This approach bypasses potential pyo3 binding issues
     println!("=== Running test_skyfield.py script directly ===");
 
-    let output = Command::new("python")
+    // Determine which Python executable to use
+    let python_cmd = env::var("PYTHON_COMMAND").unwrap_or_else(|_| "python".to_string());
+    println!("Using Python command for test_skyfield.py: {}", python_cmd);
+    
+    let output = Command::new(&python_cmd)
         .arg("test_skyfield.py")
         .output()
         .expect("Failed to execute test_skyfield.py");
