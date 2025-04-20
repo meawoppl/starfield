@@ -8,7 +8,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  PYTHON_VERSION: "3.10.8"
 
 jobs:
   test:
@@ -52,125 +51,47 @@ jobs:
           toolchain: stable
           override: true
       
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Load version information
+        id: versions
+        run: |
+          echo "python_version=$(cat devops/python_version)" >> $GITHUB_OUTPUT
+          echo "skyfield_version=$(cat devops/skyfield_version)" >> $GITHUB_OUTPUT
+      
+      - name: Set up pyenv cache
+        uses: actions/cache@v3
+        id: pyenv-cache
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
+          path: |
+            ~/.pyenv
+          key: ${{ runner.os }}-pyenv-python${{ steps.versions.outputs.python_version }}-skyfield${{ steps.versions.outputs.skyfield_version }}
+          restore-keys: |
+            ${{ runner.os }}-pyenv-python${{ steps.versions.outputs.python_version }}-
+            ${{ runner.os }}-pyenv-
       
-      - name: Install Python dependencies
+      - name: Setup Python Environment
         run: |
-          python -m pip install --upgrade pip
-          pip install skyfield pytest
-          python -c "import skyfield; print(f'Skyfield version: {skyfield.__version__}')"
-          # Create a symlink to make sure we're using the system Python
-          echo "$(which python)" > .python_path
+          bash devops/setup_pyenv.sh
       
-      - name: Verify Skyfield installation
+      - name: Verify Python environment
         run: |
-          # Create a more verbose test script with detailed Python environment info
-          cat > ci_test_python.py << 'EOF'
-#!/usr/bin/env python
-import sys
-import os
-import site
-
-print("Python executable:", sys.executable)
-print("Python version:", sys.version)
-
-# Print Python path info
-print("\nPython path information:")
-print("sys.prefix:", sys.prefix)
-try:
-    print("site.getsitepackages():", site.getsitepackages())
-except Exception as e:
-    print("Error getting site packages:", e)
-print("sys.path:")
-for p in sys.path:
-    print(f"  - {p}")
-
-# Print environment variables
-print("\nRelevant environment variables:")
-for var in ["PYTHONPATH", "PYTHONHOME"]:
-    print(f"{var}: {os.environ.get(var, 'not set')}")
-
-# Try importing skyfield
-print("\nTrying to import skyfield:")
-try:
-    import skyfield
-    print(f"SUCCESS! Skyfield {skyfield.__version__} installed at {skyfield.__file__}")
-    
-    # Try importing other skyfield modules
-    print("\nTrying to import other skyfield modules:")
-    modules = ["skyfield.api", "skyfield.data"]
-    for module in modules:
-        try:
-            m = __import__(module, fromlist=[""])
-            print(f"  ✓ {module} imported successfully")
-        except Exception as e:
-            print(f"  ✗ {module} import failed: {e}")
-    
-    # Test creating a star
-    print("\nTrying to create a Star object:")
-    from skyfield.api import Star
-    sirius = Star(ra_hours=6.75, dec_degrees=-16.7)
-    print(f"  ✓ Created Star object: {sirius}")
-    
-except ImportError as e:
-    print(f"FAILED to import skyfield: {e}")
-    sys.exit(1)
-
-print("\nAll tests passed! Skyfield is working correctly.")
-EOF
+          # Run the verification script for Python environment
+          bash devops/verify_pyenv.sh
           
-          chmod +x ci_test_python.py
-          python ci_test_python.py
-          
-          # Also verify the existing test script
-          chmod +x test_skyfield.py
-          python test_skyfield.py
-          
-      - name: Install necessary system dependencies for pyo3
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-dev
-      
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "starfield-build-cache"
       
-      - name: Update test scripts to use absolute Python path
-        run: |
-          PYTHON_EXEC=$(cat .python_path)
-          
-          # Update test_skyfield.py to use absolute path to Python interpreter
-          sed -i "1s|^#!/usr/bin/env python|#!${PYTHON_EXEC}|" test_skyfield.py
-          
-          # Add some debug output to test_skyfield.py
-          sed -i '3i import sys; print("Running with Python:", sys.executable)' test_skyfield.py
-          
-          # Check the modified script
-          echo "Modified test_skyfield.py:"
-          cat test_skyfield.py | head -n 5
-      
       - name: Run Python comparison tests
         run: |
-          # Ensure Rust tests use the same Python where we installed Skyfield
+          # Source the Python environment file created by setup_pyenv.sh
+          if [ -f .env.python ]; then
+            source .env.python
+          fi
+          
+          # Ensure Python path is available
           PYTHON_EXEC=$(cat .python_path)
           echo "Using Python: $PYTHON_EXEC"
-          
-          # Export PyO3 environment variables to help it find the right Python
-          export PYO3_PYTHON="$PYTHON_EXEC"
-          export PYTHONPATH="${{ github.workspace }}"
-          export PYTHON_SYS_EXECUTABLE="$PYTHON_EXEC"
-          
-          # Adding debugging information
-          echo "Python Executable Path: $PYTHON_EXEC"
-          echo "Python Library Path: $(find $(dirname $PYTHON_EXEC)/.. -name "libpython*.so*" | head -n 1)"
-          
-          # Set environment variable for the test to use python from PATH
-          export PYTHON_COMMAND="$PYTHON_EXEC"
           
           # Run tests with verbose output
           RUST_LOG=debug cargo test python_comparison -- --nocapture

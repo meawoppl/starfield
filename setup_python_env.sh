@@ -3,7 +3,7 @@ set -e
 
 # Configuration variables
 PYENV_ROOT="$HOME/.pyenv"
-PYTHON_VERSION="3.10.8"
+PYTHON_VERSION=$(cat devops/python_version)
 PYENV_ENV_NAME="starfield-env"
 
 echo "=== Setting up Python environment for Starfield comparison tests ==="
@@ -46,40 +46,9 @@ echo "Installing required Python packages..."
 pip install --upgrade pip
 pip install skyfield pytest
 
-# Create a small test script to verify skyfield installation
-TEST_SCRIPT=$(cat <<EOF
-#!/usr/bin/env python
-
-try:
-    import skyfield
-    from skyfield.api import load
-    from skyfield.data import hipparcos
-    
-    print(f"Skyfield {skyfield.__version__} installed successfully!")
-    
-    # Test loading hipparcos catalog
-    print("Testing Hipparcos catalog access...")
-    from skyfield.api import Star
-    # Create a simple Sirius star to verify Star object works
-    sirius = Star(ra_hours=6.75, dec_degrees=-16.7)
-    print(f"Created Star object for Sirius: {sirius}")
-    
-    # Just demonstrate that the hipparcos module is available
-    print(f"Hipparcos module available: {hipparcos.__name__}")
-    
-except Exception as e:
-    print(f"Error: {e}")
-    exit(1)
-
-print("Skyfield is working correctly!")
-EOF
-)
-
-echo "$TEST_SCRIPT" > test_skyfield.py
-chmod +x test_skyfield.py
-
-echo "Running Skyfield test script..."
-./test_skyfield.py
+# Verify Python environment
+echo "Verifying Python environment..."
+bash devops/verify_pyenv.sh
 
 echo ""
 echo "=== Python environment setup complete ==="
