@@ -57,6 +57,12 @@ jobs:
           echo "python_version=$(cat devops/python_version)" >> $GITHUB_OUTPUT
           echo "skyfield_version=$(cat devops/skyfield_version)" >> $GITHUB_OUTPUT
       
+      - name: Install python version
+        uses: gabrielfalcao/pyenv-action@v18
+        with:
+          default: "${{ steps.versions.outputs.python_version }}"
+          command: "pip install -U skyfield=${{ steps.versions.outputs.skyfield_version }}"
+
       - name: Set up pyenv cache
         uses: actions/cache@v3
         id: pyenv-cache
@@ -67,10 +73,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pyenv-python${{ steps.versions.outputs.python_version }}-
             ${{ runner.os }}-pyenv-
-      
-      - name: Setup Python Environment
-        run: |
-          bash devops/setup_pyenv.sh
       
       - name: Verify Python environment
         run: |
