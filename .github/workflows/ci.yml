@@ -2,9 +2,9 @@ name: Rust CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -23,45 +23,45 @@ jobs:
           toolchain: stable
           override: true
           components: rustfmt, clippy
-      
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "starfield-build-cache"
-      
+
       - name: Check formatting
         run: cargo fmt -- --check
-        
+
       - name: Run clippy
         run: cargo clippy -- -D warnings
-      
+
       - name: Run tests (excluding Python comparison tests)
         run: cargo test -- --skip python_comparison
-        
+
   python-comparison:
     name: Python Comparison Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      
+
       - name: Load version information
         id: versions
         run: |
           echo "python_version=$(cat devops/python_version)" >> $GITHUB_OUTPUT
           echo "skyfield_version=$(cat devops/skyfield_version)" >> $GITHUB_OUTPUT
-      
+
       - name: Install python version
         uses: gabrielfalcao/pyenv-action@v18
         with:
           default: "${{ steps.versions.outputs.python_version }}"
-          command: "pip install -U skyfield=${{ steps.versions.outputs.skyfield_version }}"
+          command: "pip install -U skyfield==${{ steps.versions.outputs.skyfield_version }}"
 
       - name: Set up pyenv cache
         uses: actions/cache@v3
@@ -73,52 +73,52 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pyenv-python${{ steps.versions.outputs.python_version }}-
             ${{ runner.os }}-pyenv-
-      
+
       - name: Verify Python environment
         run: |
           # Run the verification script for Python environment
           bash devops/verify_pyenv.sh
-          
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "starfield-build-cache"
-      
+
       - name: Run Python comparison tests
         run: |
           # Source the Python environment file created by setup_pyenv.sh
           if [ -f .env.python ]; then
             source .env.python
           fi
-          
+
           # Ensure Python path is available
           PYTHON_EXEC=$(cat .python_path)
           echo "Using Python: $PYTHON_EXEC"
-          
+
           # Run tests with verbose output
           RUST_LOG=debug cargo test python_comparison -- --nocapture
-        
+
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "starfield-build-cache"
-      
+
       - name: Build
         run: cargo build --release
-        
+
       - name: Run examples
         run: |
           for example in $(cargo run --example 2>&1 | grep -oP '(?<=Available examples:).*' | tr -d ' ' | tr ',' '\n'); do
