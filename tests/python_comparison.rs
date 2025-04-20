@@ -24,13 +24,16 @@ fn run_python_script(script: &str) -> Result<String, String> {
     // Determine which Python executable to use
     let python_cmd = env::var("PYTHON_COMMAND").unwrap_or_else(|_| "python".to_string());
     println!("Using Python command: {}", python_cmd);
-    
+
     // Run the script
     let output = match Command::new(&python_cmd).arg(script_path).output() {
         Ok(output) => output,
         Err(e) => {
             let _ = fs::remove_file(script_path);
-            return Err(format!("Failed to execute Python script with {}: {}", python_cmd, e));
+            return Err(format!(
+                "Failed to execute Python script with {}: {}",
+                python_cmd, e
+            ));
         }
     };
 
@@ -113,7 +116,7 @@ fn test_python_skyfield_available() {
     // Determine which Python executable to use
     let python_cmd = env::var("PYTHON_COMMAND").unwrap_or_else(|_| "python".to_string());
     println!("Using Python command for test_skyfield.py: {}", python_cmd);
-    
+
     let output = Command::new(&python_cmd)
         .arg("test_skyfield.py")
         .output()
