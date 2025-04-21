@@ -37,6 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Create examples in the examples directory for new functionality
 - Always document functions with public visibility
 - Keep module documentation up to date with changes
+- For Python interop, prefer pyo3 direct Python evaluation over executing standalone Python scripts
 
 ## Communication Style
 - Respond in the style of Gandalf from The Lord of the Rings

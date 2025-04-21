@@ -12,10 +12,10 @@ categories = ["science"]
 
 [dependencies]
 # Core astronomical calculations
-nalgebra = "0.32"           # Linear algebra
-time = "0.3"                # Time handling
-num = "0.4"                 # Numerical types
-lazy_static = "1.4"         # Lazy initialization
+nalgebra = "0.32"   # Linear algebra
+time = "0.3"        # Time handling
+num = "0.4"         # Numerical types
+lazy_static = "1.4" # Lazy initialization
 
 # Data handling
 serde = { version = "1.0", features = ["derive"] }
@@ -23,22 +23,26 @@ serde_json = "1.0"
 
 # Network and compression
 reqwest = { version = "0.11", features = ["blocking"] }
-flate2 = "1.0"              # GZip compression
-rand = "0.8"                # Random number generation for synthetic data
-md5 = "0.7"                 # MD5 checksum calculation
-regex = "1.10"              # Regular expressions for parsing
-byteorder = "1.5"           # Binary data reading/writing
+flate2 = "1.0"                                          # GZip compression
+rand = "0.8"                                            # Random number generation for synthetic data
+md5 = "0.7"                                             # MD5 checksum calculation
+regex = "1.10"                                          # Regular expressions for parsing
+byteorder = "1.5"                                       # Binary data reading/writing
 
 # Error handling and utilities
 thiserror = "1.0"
 log = "0.4"
-term_size = "0.3"      # Terminal dimensions detection
+term_size = "0.3" # Terminal dimensions detection
 chrono = "0.4.40"
 
 [dev-dependencies]
-criterion = "0.5"           # Benchmarking
-approx = "0.5"              # Approximate equality assertions
-rstest = "0.18"             # Test fixtures and parameterization
-tempfile = "3.8"            # Temporary file creation for tests
+criterion = "0.5" # Benchmarking
+approx = "0.5"    # Approximate equality assertions
+rstest = "0.18"   # Test fixtures and parameterization
+tempfile = "3.8"  # Temporary file creation for tests
 # Use PyO3 without auto-initialize to prevent linking errors
-pyo3 = { version = "0.20" } # Python bindings for testing against Python implementation
+pyo3 = { version = "0.19" } # Python bindings for testing against Python implementation
+
+numpy = "0.19"
+anyhow = "1.0"
+thiserror = "1.0"
