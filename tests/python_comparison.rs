@@ -21,11 +21,13 @@ crate-type = ["cdylib", "rlib"]
 
 // src/lib.rs
 use anyhow::Result;
+use base64::Engine;
 use pyo3::{
     prelude::*,
     types::{PyDict, PyList},
 };
-use serde_json::json;
+use serde_json::Value;
+use std::convert::TryFrom;
 use thiserror::Error;
 
 /// Errors that can occur in the Python-Rust bridge
@@ -44,9 +46,119 @@ pub enum BridgeError {
     ArrayShapeMismatch(String),
 }
 
+/// Types of results we can get from Python
+#[derive(Debug, PartialEq)]
+pub enum PythonResult {
+    /// Bytes data (base64 encoded)
+    Bytes(Vec<u8>),
+
+    /// String data
+    String(String),
+
+    /// Array data with shape and dtype
+    Array {
+        dtype: String,
+        shape: Vec<usize>,
+        data: Vec<u8>,
+    },
+}
+
+impl TryFrom<&str> for PythonResult {
+    type Error = BridgeError;
+
+    fn try_from(json_str: &str) -> Result<Self, Self::Error> {
+        let value: Value = serde_json::from_str(json_str)
+            .map_err(|e| BridgeError::SerializationError(e.to_string()))?;
+
+        let obj = value
+            .as_object()
+            .ok_or_else(|| BridgeError::SerializationError("Expected JSON object".into()))?;
+
+        let result_type = obj
+            .get("type")
+            .and_then(Value::as_str)
+            .ok_or_else(|| BridgeError::SerializationError("Missing 'type' field".into()))?;
+
+        let data = obj
+            .get("data")
+            .ok_or_else(|| BridgeError::SerializationError("Missing 'data' field".into()))?;
+
+        match result_type {
+            "bytes" => {
+                let base64_data = data.as_str().ok_or_else(|| {
+                    BridgeError::SerializationError("'data' field should be a string".into())
+                })?;
+
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(base64_data)
+                    .map_err(|e| {
+                        BridgeError::SerializationError(format!("Invalid base64: {}", e))
+                    })?;
+
+                Ok(PythonResult::Bytes(bytes))
+            }
+            "string" => {
+                let string_data = data.as_str().ok_or_else(|| {
+                    BridgeError::SerializationError("'data' field should be a string".into())
+                })?;
+
+                Ok(PythonResult::String(string_data.to_string()))
+            }
+            "array" => {
+                let dtype = obj
+                    .get("dtype")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| BridgeError::SerializationError("Missing 'dtype' field".into()))?
+                    .to_string();
+
+                let shape = obj
+                    .get("shape")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| BridgeError::SerializationError("Missing 'shape' field".into()))?
+                    .iter()
+                    .map(|v| {
+                        v.as_u64().ok_or_else(|| {
+                            BridgeError::SerializationError(
+                                "Shape should be array of integers".into(),
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<u64>, _>>()?
+                    .into_iter()
+                    .map(|v| v as usize)
+                    .collect();
+
+                let base64_data = data.as_str().ok_or_else(|| {
+                    BridgeError::SerializationError("'data' field should be a string".into())
+                })?;
+
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(base64_data)
+                    .map_err(|e| {
+                        BridgeError::SerializationError(format!("Invalid base64: {}", e))
+                    })?;
+
+                Ok(PythonResult::Array {
+                    dtype,
+                    shape,
+                    data: bytes,
+                })
+            }
+            _ => Err(BridgeError::SerializationError(format!(
+                "Unknown result type: {}",
+                result_type
+            ))),
+        }
+    }
+}
+
 /// Core bridge for running Python code and converting results to Rust
 pub struct PyRustBridge {
     py_globals: Py<PyDict>,
+}
+
+fn get_helper_code() -> &'static str {
+    include_str!("helper.py")
 }
 
 impl PyRustBridge {
@@ -61,10 +173,6 @@ impl PyRustBridge {
             let builtins = PyModule::import(py, "builtins")?;
             locals.set_item("__builtins__", builtins)?;
 
-            // Import json for serialization
-            let json = PyModule::import(py, "json")?;
-            locals.set_item("json", json)?;
-
             Ok(Self {
                 py_globals: locals.into(),
             })
@@ -76,21 +184,27 @@ impl PyRustBridge {
         Python::with_gil(|py| {
             let globals = self.py_globals.as_ref(py);
 
-            // Create a locals dictionary for the execution
-            let locals = PyDict::new(py);
+            // No need for locals dictionary since we're using globals for both
 
-            // Try to execute the code
-            match py.run(code, Some(globals), Some(locals)) {
-                Ok(_) => {}
-                Err(e) => {
-                    // Format Python exception nicely
-                    let py_err = format_py_error(py, &e);
-                    return Err(BridgeError::PythonError(py_err).into());
+            // load the helper code
+            let helper_code = get_helper_code();
+
+            let get_result_code = "_result = rust.get_result()";
+
+            for code_block in vec![helper_code, code, get_result_code] {
+                println!("Running code block: \n{}", code_block);
+                match py.run(code_block, Some(globals), None) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        // Format Python exception nicely
+                        let py_err = format_py_error(py, &e);
+                        return Err(BridgeError::PythonError(py_err).into());
+                    }
                 }
             }
 
             // Check if there's a result variable defined
-            match locals.get_item("result") {
+            match globals.get_item("_result") {
                 Some(value) => {
                     if let Ok(value) = value.extract::<String>() {
                         Ok(value)
@@ -153,41 +267,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_json_serialization() -> Result<()> {
+    fn test_print_ld_library_path() {
+        // print the path after breaking it up by :
+        if let Ok(val) = std::env::var("LD_LIBRARY_PATH") {
+            let paths: Vec<&str> = val.split(':').collect();
+            for p in paths {
+                println!("Path: {}", p);
+            }
+        } else {
+            println!("LD_LIBRARY_PATH is not set.");
+        }
+    }
+
+    #[test]
+    fn test_get_interp_info() {
+        let bridge = PyRustBridge::new().unwrap();
+
+        let code = r#"import sys; rust(sys.executable)"#;
+
+        let result = bridge.run_py_to_json(code).unwrap();
+        println!("Result Interp: {}", result);
+    }
+
+    #[test]
+    fn test_helper_code_loaded() -> Result<()> {
+        // Print the helper code to see what's being loaded
+        println!("Helper code: {}", get_helper_code());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_bytes_serialization() -> Result<()> {
         let bridge = PyRustBridge::new()?;
 
-        let code = r#"
-import json
-
-# Create a sample JSON structure
-data = {
-    "name": "Test",
-    "values": [1, 2, 3, 4, 5],
-    "nested": {
-        "a": True,
-        "b": None,
-        "c": 3.14
-    }
-}
-
-# Set as result
-result = data
-"#;
+        let code = r#"rust.collect_bytes(b"abcd")"#;
 
         let json_result = bridge.run_py_to_json(code)?;
+        println!("JSON result: {}", json_result);
 
-        // Expected structure
-        let expected = json!({
-            "name": "Test",
-            "values": [1, 2, 3, 4, 5],
-            "nested": {
-                "a": true,
-                "b": null,
-                "c": 3.14
+        // Parse the JSON result into our PythonResult enum
+        let python_result = PythonResult::try_from(json_result.as_str())?;
+
+        // Verify it's the correct type
+        match python_result {
+            PythonResult::Bytes(bytes) => {
+                assert_eq!(bytes, b"abcd");
             }
-        });
+            _ => panic!("Expected Bytes type, got {:?}", python_result),
+        }
 
-        assert_eq!(json_result, expected);
         Ok(())
     }
 
