@@ -3,7 +3,7 @@ set -e
 
 # Configuration variables
 PYENV_ROOT="$HOME/.pyenv"
-PYTHON_VERSION=$(cat devops/python_version)
+PYTHON_VERSION=$(cat .python-version)
 PYENV_ENV_NAME="starfield-env"
 
 echo "=== Setting up Python environment for Starfield comparison tests ==="

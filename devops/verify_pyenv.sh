@@ -3,8 +3,8 @@
 # Verification script to check that the starfield pyenv is active
 
 # Configuration
-EXPECTED_ENV_NAME="starfield"
-EXPECTED_PYTHON_VERSION=$(cat $(dirname "$0")/python_version)
+EXPECTED_ENV_NAME=$(cat "$(dirname "$0")/../.python-version")
+EXPECTED_PYTHON_VERSION=$EXPECTED_ENV_NAME
 
 # Text formatting
 GREEN='\033[0;32m'
@@ -52,7 +52,7 @@ fi
 
 # Check skyfield version
 SKYFIELD_VERSION=$(python -c "import skyfield; print(skyfield.__version__)")
-EXPECTED_SKYFIELD_VERSION=$(cat $(dirname "$0")/skyfield_version)
+EXPECTED_SKYFIELD_VERSION=$(cat "$(dirname "$0")/../.skyfield-version")
 
 echo -e "${GREEN}${CHECK} Skyfield installed: v$SKYFIELD_VERSION${NC}"
 

@@ -267,7 +267,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_print_ld_library_path() {
+    fn test_python_print_ld_library_path() {
         // print the path after breaking it up by :
         if let Ok(val) = std::env::var("LD_LIBRARY_PATH") {
             let paths: Vec<&str> = val.split(':').collect();
@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_interp_info() {
+    fn test_python_get_interp_info() {
         let bridge = PyRustBridge::new().unwrap();
 
         let code = r#"import sys; rust(sys.executable)"#;
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn test_helper_code_loaded() -> Result<()> {
+    fn test_python_helper_code_loaded() -> Result<()> {
         // Print the helper code to see what's being loaded
         println!("Helper code: {}", get_helper_code());
 
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bytes_serialization() -> Result<()> {
+    fn test_python_bytes_serialization() -> Result<()> {
         let bridge = PyRustBridge::new()?;
 
         let code = r#"rust.collect_bytes(b"abcd")"#;
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn test_error_handling() {
+    fn test_python_error_handling() {
         let bridge = PyRustBridge::new().unwrap();
 
         // This code will raise a ZeroDivisionError

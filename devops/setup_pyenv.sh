@@ -3,7 +3,7 @@ set -e
 
 # Configuration variables
 PYENV_ROOT="$HOME/.pyenv"
-PYTHON_VERSION=$(cat $(dirname "$0")/python_version)
+PYTHON_VERSION=$(cat "$(dirname "$0")/../.python-version")
 PYENV_ENV_NAME="starfield"
 
 echo "=== Setting up pyenv environment for Starfield ==="
