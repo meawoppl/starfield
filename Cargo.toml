@@ -1,6 +1,6 @@
 [package]
 name = "starfield"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 authors = ["Matthew Goodman"]
 description = "Star catalog and celestial mechanics calculations (inspired by skyfield)"
@@ -12,10 +12,11 @@ categories = ["science"]
 
 [dependencies]
 # Core astronomical calculations
-nalgebra = "0.32"   # Linear algebra
-time = "0.3"        # Time handling
-num = "0.4"         # Numerical types
-lazy_static = "1.4" # Lazy initialization
+nalgebra = "0.32"           # Linear algebra
+time = "0.3"                # Time handling
+num = "0.4"                 # Numerical types
+lazy_static = "1.4"         # Lazy initialization
+ndarray = "0.15"            # N-dimensional arrays
 
 # Data handling
 serde = { version = "1.0", features = ["derive"] }
