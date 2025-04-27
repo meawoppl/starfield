@@ -21,6 +21,8 @@ pub mod nutationlib;
 pub mod planetlib;
 pub mod positions;
 pub mod precessionlib;
+#[cfg(feature = "python-tests")]
+pub mod pybridge;
 pub mod time;
 pub mod units;
 

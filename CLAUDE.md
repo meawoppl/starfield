@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run with release optimizations: `cargo build --release`
 - Run example: `cargo run --example hipparcos`
 - Run tests: `cargo test`
+- Run Python comparison tests: `cargo test --features python-tests`
+- Run Skyfield comparison example: `cargo run --example skyfield_comparison --features python-tests`
 - Run single test: `cargo test test_synthetic_hipparcos`
 - Run benchmarks: `cargo bench`
 

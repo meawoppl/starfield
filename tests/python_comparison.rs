@@ -262,7 +262,7 @@ fn format_py_error(py: Python, error: &PyErr) -> String {
 }
 
 // Tests for the bridge
-#[cfg(test)]
+#[cfg(all(test, feature = "python-tests"))]
 mod tests {
     use super::*;
 
