@@ -17,6 +17,7 @@ time = "0.3"                # Time handling
 num = "0.4"                 # Numerical types
 lazy_static = "1.4"         # Lazy initialization
 ndarray = "0.15"            # N-dimensional arrays
+num-traits = "0.2"          # Numeric traits
 
 # Data handling
 serde = { version = "1.0", features = ["derive"] }
@@ -29,6 +30,9 @@ rand = "0.8"                                            # Random number generati
 md5 = "0.7"                                             # MD5 checksum calculation
 regex = "1.10"                                          # Regular expressions for parsing
 byteorder = "1.5"                                       # Binary data reading/writing
+
+# Memory mapping and file I/O
+memmap2 = "0.9"             # Memory mapping for efficient file access
 
 # Error handling and utilities
 thiserror = "1.0"
