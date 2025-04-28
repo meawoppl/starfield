@@ -42,8 +42,9 @@ rust(t.tt)  # TT Julian Date
 
     // Calculate the same in Rust
     let ts = Timescale::default();
-    let now = Time::now();
-    let rust_jd = now.to_julian_date(ts.tt);
+    let now = ts.now();
+    // Use the tt() method to get the Julian date directly
+    let rust_jd = now.tt();
 
     println!("Rust Starfield Julian Date (TT): {}", rust_jd);
 
