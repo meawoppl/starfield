@@ -4,6 +4,7 @@
 //! error handling for the Python-Rust bridge.
 
 use base64::Engine;
+use pyo3::PyErr;
 use serde_json::Value;
 use std::convert::TryFrom;
 use thiserror::Error;
@@ -24,6 +25,12 @@ pub enum BridgeError {
     ArrayShapeMismatch(String),
 }
 
+impl From<PyErr> for BridgeError {
+    fn from(err: PyErr) -> Self {
+        BridgeError::PythonError(err.to_string())
+    }
+}
+
 /// Types of results we can get from Python
 #[derive(Debug, PartialEq)]
 pub enum PythonResult {
@@ -34,6 +41,10 @@ pub enum PythonResult {
     String(String),
 
     /// Array data with shape and dtype
+    ///
+    /// The `data` field contains the raw bytes of the array in row-major order.
+    /// The `shape` field describes the dimensions of the array.
+    /// The `dtype` field describes the data type of the array elements.
     Array {
         dtype: String,
         shape: Vec<usize>,

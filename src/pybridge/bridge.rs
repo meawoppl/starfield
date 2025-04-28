@@ -16,7 +16,7 @@ pub struct PyRustBridge {
 
 /// Returns the helper code that will be loaded into the Python environment
 pub fn get_helper_code() -> &'static str {
-    include_str!("../../tests/helper.py")
+    include_str!("helper.py")
 }
 
 impl PyRustBridge {
@@ -47,7 +47,7 @@ impl PyRustBridge {
 
             let get_result_code = "_result = rust.get_result()";
 
-            for code_block in vec![helper_code, code, get_result_code] {
+            for code_block in [helper_code, code, get_result_code] {
                 println!("Running code block: \n{}", code_block);
                 match py.run(code_block, Some(globals), None) {
                     Ok(_) => {}
@@ -192,5 +192,55 @@ mod tests {
             let err_string = err.to_string();
             assert!(err_string.contains("ZeroDivisionError"));
         }
+    }
+
+    #[test]
+    fn test_python_array_serialization() -> Result<()> {
+        let bridge = PyRustBridge::new()?;
+
+        // Create a numpy array and collect it
+        let code = r#"
+import numpy as np
+# Create a simple 2x3 array with known values
+arr = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float64)
+rust.collect_array(arr)
+        "#;
+
+        let json_result = bridge.run_py_to_json(code)?;
+        println!("JSON result: {}", json_result);
+
+        // Parse the JSON result into our PythonResult enum
+        let python_result = PythonResult::try_from(json_result.as_str())?;
+
+        // Verify it's the correct type and shape
+        match python_result {
+            PythonResult::Array { dtype, shape, data } => {
+                // Check the dtype is float64
+                assert_eq!(dtype, "float64");
+
+                // Check the shape is 2x3
+                assert_eq!(shape, vec![2, 3]);
+
+                // The data should be 48 bytes (2x3 array of float64, 8 bytes each)
+                assert_eq!(data.len(), 48);
+
+                // Convert bytes to f64 values to verify content
+                // Note: We're assuming little-endian byte order here
+                let mut values = Vec::new();
+                for chunk in data.chunks_exact(8) {
+                    let value = f64::from_le_bytes([
+                        chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6],
+                        chunk[7],
+                    ]);
+                    values.push(value);
+                }
+
+                // Check specific values (row-major order)
+                assert_eq!(values, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+            }
+            _ => panic!("Expected Array type, got {:?}", python_result),
+        }
+
+        Ok(())
     }
 }
