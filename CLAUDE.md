@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run with release optimizations: `cargo build --release`
 - Run example: `cargo run --example hipparcos`
 - Run tests: `cargo test`
+- Run Python comparison tests: `cargo test --features python-tests`
+- Run Skyfield comparison example: `cargo run --example skyfield_comparison --features python-tests`
 - Run single test: `cargo test test_synthetic_hipparcos`
 - Run benchmarks: `cargo bench`
 
@@ -17,6 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commit Guidelines
 - Always run `cargo fmt` and `cargo clippy` before committing any changes
 - Fix any formatting or linting issues before finalizing the commit
+- Do not include attribution to Claude in commit messages
 
 ## Code Style Guidelines
 - Use Rust 2021 edition idioms
@@ -36,6 +39,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Create examples in the examples directory for new functionality
 - Always document functions with public visibility
 - Keep module documentation up to date with changes
+- For Python interop, prefer pyo3 direct Python evaluation over executing standalone Python scripts
 
 ## Communication Style
 - Respond in the style of Gandalf from The Lord of the Rings
