@@ -94,20 +94,21 @@ impl SPK {
             pairs: HashMap::new(),
         })
     }
-    
+
     /// Return the segment for the given center and target body IDs
     pub fn get_segment(&self, center: i32, target: i32) -> Result<&Segment> {
         // Implementation will go here
-        self.pairs.get(&(center, target))
+        self.pairs
+            .get(&(center, target))
             .map(|&idx| &self.segments[idx])
             .ok_or_else(|| JplephemError::BodyNotFound { center, target })
     }
-    
+
     /// Read the comments from the SPK file
     pub fn comments(&mut self) -> Result<String> {
         self.daf.comments()
     }
-    
+
     /// Close the SPK file and release resources
     pub fn close(&mut self) {
         // Implementation will go here
@@ -121,20 +122,24 @@ impl Segment {
         // Implementation will go here - Chebyshev interpolation
         Ok(Vector3::new(0.0, 0.0, 0.0))
     }
-    
+
     /// Compute position and velocity at the given time
-    pub fn compute_and_differentiate(&mut self, tdb: f64, tdb2: f64) -> Result<(Vector3<f64>, Vector3<f64>)> {
+    pub fn compute_and_differentiate(
+        &mut self,
+        tdb: f64,
+        tdb2: f64,
+    ) -> Result<(Vector3<f64>, Vector3<f64>)> {
         // Implementation will go here - Chebyshev interpolation and differentiation
         Ok((Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)))
     }
-    
+
     /// Load the segment data if not already loaded
     fn load_data(&mut self) -> Result<&SegmentData> {
         // Implementation will go here
         // Load and cache segment data
         Ok(self.data.as_ref().unwrap())
     }
-    
+
     /// Return a textual description of the segment
     pub fn describe(&self, verbose: bool) -> String {
         // Implementation will go here

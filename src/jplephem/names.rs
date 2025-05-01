@@ -3,8 +3,8 @@
 //! This module provides mappings between celestial body names and ID numbers
 //! used in the JPL ephemerides.
 
-use std::collections::HashMap;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 
 lazy_static! {
     /// Map from target ID numbers to canonical names
@@ -46,7 +46,10 @@ pub fn titlecase(name: &str) -> String {
                 let mut chars = word.chars();
                 match chars.next() {
                     None => String::new(),
-                    Some(c) => c.to_uppercase().chain(chars.flat_map(|c| c.to_lowercase())).collect(),
+                    Some(c) => c
+                        .to_uppercase()
+                        .chain(chars.flat_map(|c| c.to_lowercase()))
+                        .collect(),
                 }
             })
             .collect::<Vec<String>>()
@@ -99,7 +102,7 @@ const TARGET_NAME_PAIRS: &[(i32, &str)] = &[
 /// Common target name/ID pairs used in applications
 pub mod targets {
     //! Common target IDs for convenient access
-    
+
     /// Solar System Barycenter
     pub const SOLAR_SYSTEM_BARYCENTER: i32 = 0;
     /// Mercury Barycenter

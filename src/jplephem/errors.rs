@@ -2,8 +2,8 @@
 //!
 //! This module defines error types for the JPL ephemeris functionality.
 
-use thiserror::Error;
 use std::path::PathBuf;
+use thiserror::Error;
 
 /// Main error type for jplephem functionality
 #[derive(Error, Debug)]

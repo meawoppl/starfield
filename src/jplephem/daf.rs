@@ -6,14 +6,14 @@
 //! The DAF format is described in:
 //! http://naif.jpl.nasa.gov/pub/naif/toolkit_docs/FORTRAN/req/daf.html
 
-use std::fs::File;
-use std::path::{Path, PathBuf};
-use std::io::{Read, Seek, SeekFrom};
-use std::sync::Mutex;
+use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use memmap2::{Mmap, MmapOptions};
-use byteorder::{BigEndian, LittleEndian, ByteOrder, ReadBytesExt};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-use crate::jplephem::errors::{JplephemError, Result, io_err};
+use crate::jplephem::errors::{io_err, JplephemError, Result};
 
 /// Size of a record in the DAF file (bytes)
 const RECORD_SIZE: usize = 1024;
@@ -74,7 +74,7 @@ impl DAF {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path_buf = path.as_ref().to_path_buf();
         let file = File::open(&path_buf).map_err(|e| io_err(&path_buf, e))?;
-        
+
         // Create DAF with minimal initialization
         let mut daf = DAF {
             path: path_buf,
@@ -94,33 +94,35 @@ impl DAF {
             summary_step: 0,
             summaries_per_record: 0,
         };
-        
+
         // Read file record and initialize the DAF
         daf.initialize()?;
-        
+
         // Try to create memory map if possible
         daf.setup_memory_map()?;
-        
+
         Ok(daf)
     }
-    
+
     /// Initialize the DAF by reading the file record
     fn initialize(&mut self) -> Result<()> {
         // Read the first record (file record)
         let file_record = self.read_record(1)?;
-        
+
         // Extract the ID word (first 8 bytes)
         self.locidw = String::from_utf8_lossy(&file_record[0..8])
             .trim_end()
             .to_uppercase();
-        
+
         // Determine the endianness and parse the file
         let mut found_valid_format = false;
-        
+
         if self.locidw == "NAIF/DAF" || self.locidw.starts_with("DAF/") {
             // Extract format identifier
-            self.locfmt = String::from_utf8_lossy(&file_record[88..96]).trim_end().to_string();
-            
+            self.locfmt = String::from_utf8_lossy(&file_record[88..96])
+                .trim_end()
+                .to_string();
+
             // Try to determine endianness from format identifier first
             if self.locfmt == "BIG-IEEE" {
                 self.endian = Endian::Big;
@@ -134,7 +136,7 @@ impl DAF {
                 }
             } else {
                 // If format identifier is not recognized, try both endianness options
-                
+
                 // Try little-endian first (most common in modern files)
                 self.endian = Endian::Little;
                 if self.parse_file_record(&file_record) && self.nd > 0 && self.ni > 0 {
@@ -142,7 +144,7 @@ impl DAF {
                     // Set format for consistency
                     self.locfmt = "LTL-IEEE".to_string();
                 }
-                
+
                 // If little-endian didn't work, try big-endian
                 if !found_valid_format {
                     self.endian = Endian::Big;
@@ -153,27 +155,27 @@ impl DAF {
                     }
                 }
             }
-            
+
             // FTP test string is sometimes present in the file record, but not always
             // Per the JPL documentation, it's not a strict requirement for all valid files
             // So we no longer check for it
         }
-        
+
         if !found_valid_format {
-            return Err(JplephemError::InvalidFormat(
-                format!("Could not parse file as a valid DAF/SPK file. ID: {}, Format: {}",
-                        self.locidw, self.locfmt)
-            ));
+            return Err(JplephemError::InvalidFormat(format!(
+                "Could not parse file as a valid DAF/SPK file. ID: {}, Format: {}",
+                self.locidw, self.locfmt
+            )));
         }
-        
+
         // Calculate summary struct sizes
         self.summary_length = (self.nd + self.ni) as usize * DOUBLE_SIZE;
         self.summary_step = self.summary_length + (-(self.summary_length as isize) % 8) as usize;
         self.summaries_per_record = (RECORD_SIZE - 3 * DOUBLE_SIZE) / self.summary_step;
-        
+
         Ok(())
     }
-    
+
     /// Parse the file record data
     fn parse_file_record(&mut self, file_record: &[u8]) -> bool {
         // Access data based on current endianness
@@ -182,41 +184,49 @@ impl DAF {
                 // Skip ID word (already parsed)
                 self.nd = BigEndian::read_i32(&file_record[8..12]);
                 self.ni = BigEndian::read_i32(&file_record[12..16]);
-                self.locifn = String::from_utf8_lossy(&file_record[16..76]).trim_end().to_string();
+                self.locifn = String::from_utf8_lossy(&file_record[16..76])
+                    .trim_end()
+                    .to_string();
                 self.fward = BigEndian::read_i32(&file_record[76..80]);
                 self.bward = BigEndian::read_i32(&file_record[80..84]);
                 self.free = BigEndian::read_i32(&file_record[84..88]);
                 // locfmt already parsed if DAF/ format
                 if self.locfmt.is_empty() {
-                    self.locfmt = String::from_utf8_lossy(&file_record[88..96]).trim_end().to_string();
+                    self.locfmt = String::from_utf8_lossy(&file_record[88..96])
+                        .trim_end()
+                        .to_string();
                 }
-            },
+            }
             Endian::Little => {
                 // Skip ID word (already parsed)
                 self.nd = LittleEndian::read_i32(&file_record[8..12]);
                 self.ni = LittleEndian::read_i32(&file_record[12..16]);
-                self.locifn = String::from_utf8_lossy(&file_record[16..76]).trim_end().to_string();
+                self.locifn = String::from_utf8_lossy(&file_record[16..76])
+                    .trim_end()
+                    .to_string();
                 self.fward = LittleEndian::read_i32(&file_record[76..80]);
                 self.bward = LittleEndian::read_i32(&file_record[80..84]);
                 self.free = LittleEndian::read_i32(&file_record[84..88]);
                 // locfmt already parsed if DAF/ format
                 if self.locfmt.is_empty() {
-                    self.locfmt = String::from_utf8_lossy(&file_record[88..96]).trim_end().to_string();
+                    self.locfmt = String::from_utf8_lossy(&file_record[88..96])
+                        .trim_end()
+                        .to_string();
                 }
-            },
+            }
         }
-        
+
         // Verify values are reasonable
         self.nd > 0 && self.ni > 0 && self.fward > 0 && self.bward > 0 && self.free > 0
     }
-    
+
     /// Set up memory mapping for the file
     fn setup_memory_map(&mut self) -> Result<()> {
         // Try to create a memory map for the file for more efficient access
         if self.map.is_none() {
             // Lock the file for operations
             let file = self.file.get_mut().unwrap();
-            
+
             // Get the file descriptor
             match file.try_clone() {
                 Ok(file_clone) => {
@@ -224,90 +234,96 @@ impl DAF {
                     match unsafe { MmapOptions::new().map(&file_clone) } {
                         Ok(mmap) => {
                             self.map = Some(mmap);
-                            
+
                             // Create array view if possible
                             self.setup_array_view()?;
-                        },
+                        }
                         Err(e) => {
                             // Memory mapping failed - log warning but continue
-                            eprintln!("Warning: Memory mapping failed: {}. Falling back to regular I/O.", e);
+                            eprintln!(
+                                "Warning: Memory mapping failed: {}. Falling back to regular I/O.",
+                                e
+                            );
                         }
                     }
-                },
+                }
                 Err(e) => {
                     // File clone failed - log warning but continue
-                    eprintln!("Warning: Could not clone file handle: {}. Falling back to regular I/O.", e);
+                    eprintln!(
+                        "Warning: Could not clone file handle: {}. Falling back to regular I/O.",
+                        e
+                    );
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Create array view for memory-mapped file
     fn setup_array_view(&mut self) -> Result<()> {
         if let Some(map) = &self.map {
             // Create array view that treats the entire mapped memory as an array of doubles
             // (will be accessed with appropriate offsets later)
             let arr_size = (map.len() / DOUBLE_SIZE).min(self.free as usize - 1);
-            
+
             // Safety note: We ensure the array only accesses valid memory within
             // the mapped region, up to free-1 elements
             let mut arr = Vec::with_capacity(arr_size);
-            
+
             // Fill array with zeros initially
             // We'll read actual values when they're needed
             arr.resize(arr_size, 0.0);
-            
+
             self.array = Some(arr);
         }
-        
+
         Ok(())
     }
-    
+
     /// Read a record (1024 bytes) at the given record number (1-indexed)
     pub fn read_record(&mut self, record_number: usize) -> Result<Vec<u8>> {
         // Records are 1-indexed in the API but 0-indexed in the file
         let offset = (record_number - 1) * RECORD_SIZE;
-        
+
         // Check if we can use memory map
         if let Some(map) = &self.map {
             if offset + RECORD_SIZE <= map.len() {
                 return Ok(map[offset..offset + RECORD_SIZE].to_vec());
             }
         }
-        
+
         // Fall back to file I/O
         let mut buffer = vec![0; RECORD_SIZE];
-        
+
         // Lock the file for reading
         let mut file = self.file.lock().unwrap();
-        
+
         // Seek to the record position
         file.seek(SeekFrom::Start(offset as u64))
             .map_err(|e| io_err(&self.path, e))?;
-        
+
         // Read the record
         file.read_exact(&mut buffer)
             .map_err(|e| io_err(&self.path, e))?;
-        
+
         Ok(buffer)
     }
-    
+
     /// Read comments from the comment area of the file
     pub fn comments(&mut self) -> Result<String> {
         let record_numbers = 2..self.fward as usize;
         if record_numbers.is_empty() {
             return Ok(String::new());
         }
-        
+
         // Read all comment records
         let mut data = Vec::new();
         for n in record_numbers {
             let record = self.read_record(n)?;
             data.extend_from_slice(&record[0..1000]);
         }
-        
+
         // Find the EOT byte
         match data.iter().position(|&b| b == 0x04) {
             Some(pos) => {
@@ -322,69 +338,69 @@ impl DAF {
                     }
                 }
                 Ok(result)
-            },
+            }
             None => Err(JplephemError::InvalidFormat(
-                "DAF file comment area is missing its EOT byte".to_string()
+                "DAF file comment area is missing its EOT byte".to_string(),
             )),
         }
     }
-    
+
     /// Generator for the summary records in the file
     fn summary_records(&mut self) -> Result<Vec<(usize, usize, Vec<u8>)>> {
         let mut result = Vec::new();
         let mut record_number = self.fward as usize;
-        
+
         while record_number > 0 {
             let data = self.read_record(record_number)?;
-            
+
             // Read control values (next_number, previous_number, n_summaries)
             let next_number;
             let n_summaries;
-            
+
             match self.endian {
                 Endian::Big => {
                     next_number = BigEndian::read_f64(&data[0..8]) as usize;
                     // Skip previous_number (8..16)
                     n_summaries = BigEndian::read_f64(&data[16..24]) as usize;
-                },
+                }
                 Endian::Little => {
                     next_number = LittleEndian::read_f64(&data[0..8]) as usize;
                     // Skip previous_number (8..16)
                     n_summaries = LittleEndian::read_f64(&data[16..24]) as usize;
-                },
+                }
             }
-            
+
             result.push((record_number, n_summaries, data));
             record_number = next_number;
         }
-        
+
         Ok(result)
     }
-    
+
     /// Extract summaries from the file
     pub fn summaries(&mut self) -> Result<Vec<(Vec<u8>, Vec<f64>)>> {
         let mut result = Vec::new();
         let summary_records = self.summary_records()?;
-        
+
         for (record_number, n_summaries, summary_data) in summary_records {
             // Read the name record (follows the summary record)
             let name_data = self.read_record(record_number + 1)?;
-            
+
             // Extract each summary
             for i in 0..n_summaries {
                 let start_pos = i * self.summary_step;
-                
+
                 // Get name from name record
                 let name_start = start_pos;
                 let name_end = name_start + self.summary_step;
                 let name = name_data[name_start..name_end].to_vec();
-                
+
                 // Get summary values from summary record
                 let summary_start = 24 + start_pos; // 24 is the size of the control values
                 let summary_end = summary_start + self.summary_length;
-                
+
                 let mut values = Vec::with_capacity(self.nd as usize + self.ni as usize);
-                
+
                 // Read double precision values
                 for j in 0..self.nd as usize {
                     let pos = summary_start + j * 8;
@@ -394,36 +410,39 @@ impl DAF {
                     };
                     values.push(value);
                 }
-                
+
                 // Read integer values as f64 (like in Python implementation)
                 for j in 0..self.ni as usize {
                     let pos = summary_start + (self.nd as usize + j) * 8;
                     let value = match self.endian {
                         Endian::Big => BigEndian::read_i32(&summary_data[pos..pos + 4]) as f64,
-                        Endian::Little => LittleEndian::read_i32(&summary_data[pos..pos + 4]) as f64,
+                        Endian::Little => {
+                            LittleEndian::read_i32(&summary_data[pos..pos + 4]) as f64
+                        }
                     };
                     values.push(value);
                 }
-                
+
                 result.push((name, values));
             }
         }
-        
+
         Ok(result)
     }
-    
+
     /// Read an array of f64 values from the file
     pub fn read_array(&mut self, start: usize, end: usize) -> Result<Vec<f64>> {
         // Validate indices
         if start < 1 || end < start {
-            return Err(JplephemError::InvalidFormat(
-                format!("Invalid array bounds: start={}, end={}", start, end)
-            ));
+            return Err(JplephemError::InvalidFormat(format!(
+                "Invalid array bounds: start={}, end={}",
+                start, end
+            )));
         }
-        
+
         let length = end - start + 1;
         let mut result = Vec::with_capacity(length);
-        
+
         // Check if we can use the array view
         if let Some(array) = &self.array {
             // Make sure the requested range is within bounds
@@ -437,24 +456,24 @@ impl DAF {
                         break;
                     }
                 }
-                
+
                 return Ok(result);
             }
         }
-        
+
         // Fall back to file I/O
         let mut file = self.file.lock().unwrap();
-        
+
         // Seek to the start position
         let offset = (start - 1) * DOUBLE_SIZE;
         file.seek(SeekFrom::Start(offset as u64))
             .map_err(|e| io_err(&self.path, e))?;
-        
+
         // Read the doubles
         let mut buffer = vec![0u8; length * DOUBLE_SIZE];
         file.read_exact(&mut buffer)
             .map_err(|e| io_err(&self.path, e))?;
-        
+
         // Convert to f64 values
         for i in 0..length {
             let pos = i * DOUBLE_SIZE;
@@ -464,17 +483,17 @@ impl DAF {
             };
             result.push(value);
         }
-        
+
         Ok(result)
     }
-    
+
     /// Map an array of f64 values from the file using memory mapping
     pub fn map_array(&mut self, start: usize, end: usize) -> Result<Vec<f64>> {
         // Initialize array view if not already done
         if self.array.is_none() && self.map.is_some() {
             self.setup_array_view()?;
         }
-        
+
         // Use read_array as a fallback
         self.read_array(start, end)
     }

@@ -13,7 +13,7 @@ use nalgebra::Vector3;
 use crate::jplephem::daf::DAF;
 use crate::jplephem::errors::{JplephemError, Result};
 use crate::jplephem::names::target_name;
-use crate::jplephem::spk::{seconds_to_jd, jd_to_seconds};
+use crate::jplephem::spk::{jd_to_seconds, seconds_to_jd};
 
 /// J2000 epoch as Julian date
 const T0: f64 = 2451545.0;
@@ -77,12 +77,12 @@ impl PCK {
             segments: Vec::new(),
         })
     }
-    
+
     /// Read the comments from the PCK file
     pub fn comments(&mut self) -> Result<String> {
         self.daf.comments()
     }
-    
+
     /// Close the PCK file and release resources
     pub fn close(&mut self) {
         // Implementation will go here
@@ -96,20 +96,24 @@ impl Segment {
         // Implementation will go here - Chebyshev interpolation
         Ok(Vector3::new(0.0, 0.0, 0.0))
     }
-    
+
     /// Compute angles and rates at the given time
-    pub fn compute_with_rates(&mut self, tdb: f64, tdb2: f64) -> Result<(Vector3<f64>, Vector3<f64>)> {
+    pub fn compute_with_rates(
+        &mut self,
+        tdb: f64,
+        tdb2: f64,
+    ) -> Result<(Vector3<f64>, Vector3<f64>)> {
         // Implementation will go here - Chebyshev interpolation and differentiation
         Ok((Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)))
     }
-    
+
     /// Load the segment data if not already loaded
     fn load_data(&mut self) -> Result<&SegmentData> {
         // Implementation will go here
         // Load and cache segment data
         Ok(self.data.as_ref().unwrap())
     }
-    
+
     /// Return a textual description of the segment
     pub fn describe(&self, verbose: bool) -> String {
         // Implementation will go here
