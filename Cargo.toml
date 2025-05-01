@@ -12,12 +12,12 @@ categories = ["science"]
 
 [dependencies]
 # Core astronomical calculations
-nalgebra = "0.32"           # Linear algebra
-time = "0.3"                # Time handling
-num = "0.4"                 # Numerical types
-lazy_static = "1.4"         # Lazy initialization
-ndarray = "0.15"            # N-dimensional arrays
-num-traits = "0.2"          # Numeric traits
+nalgebra = "0.32"   # Linear algebra
+time = "0.3"        # Time handling
+num = "0.4"         # Numerical types
+lazy_static = "1.4" # Lazy initialization
+ndarray = "0.15"    # N-dimensional arrays
+num-traits = "0.2"  # Numeric traits
 
 # Data handling
 serde = { version = "1.0", features = ["derive"] }
@@ -32,7 +32,7 @@ regex = "1.10"                                          # Regular expressions fo
 byteorder = "1.5"                                       # Binary data reading/writing
 
 # Memory mapping and file I/O
-memmap2 = "0.9"             # Memory mapping for efficient file access
+memmap2 = "0.9" # Memory mapping for efficient file access
 
 # Error handling and utilities
 thiserror = "1.0"
@@ -44,7 +44,7 @@ base64 = "0.22.1"
 # Python comparison tests
 # These dependencies are only active when the python-tests feature is enabled
 anyhow = { version = "1.0", optional = true }
-pyo3 = { version = "0.19", optional = true } # Python bindings for testing against Python implementation
+pyo3 = { version = "0.19", optional = true }  # Python bindings for testing against Python implementation
 numpy = { version = "0.19", optional = true }
 
 [dev-dependencies]
