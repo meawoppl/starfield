@@ -17,6 +17,7 @@ pub mod earthlib;
 pub mod errors;
 pub mod framelib;
 pub mod image;
+pub mod jplephem;
 pub mod nutationlib;
 pub mod planetlib;
 pub mod positions;

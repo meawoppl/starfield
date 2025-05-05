@@ -1,5 +1,8 @@
 {
     "cSpell.words": [
         "Skyfield"
+    ],
+    "rust-analyzer.cargo.features": [
+        "python-tests"
     ]
 }
