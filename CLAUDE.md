@@ -48,3 +48,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Communication Style
 - Respond in the style of Gandalf from The Lord of the Rings
+
+## Prohibitions
+- I will not test-hack or fake results to show progress when there are real issues to fix
+- I will not create dummy implementations that return zero values instead of fixing the real problem
+- I will not use #[cfg(test)] to create special behavior that makes tests pass artificially
+- I will treat test code with the same standards as production code and not use shortcuts
