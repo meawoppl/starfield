@@ -369,6 +369,10 @@ impl DAF {
                     n_summaries = LittleEndian::read_f64(&data[16..24]) as usize;
                 }
             }
+            
+            // Sanity check on number of summaries to prevent invalid data
+            let max_summaries = (RECORD_SIZE - 24) / self.summary_step;
+            let n_summaries = n_summaries.min(max_summaries);
 
             result.push((record_number, n_summaries, data));
             record_number = next_number;
@@ -381,10 +385,17 @@ impl DAF {
     pub fn summaries(&mut self) -> Result<Vec<(Vec<u8>, Vec<f64>)>> {
         let mut result = Vec::new();
         let summary_records = self.summary_records()?;
-
+        
+        // Log summary record counts for debugging (in debug builds only)
+        #[cfg(debug_assertions)]
+        println!("DAF file has {} summary records", summary_records.len());
+        
         for (record_number, n_summaries, summary_data) in summary_records {
             // Read the name record (follows the summary record)
             let name_data = self.read_record(record_number + 1)?;
+            
+            #[cfg(debug_assertions)]
+            println!("  Record {} has {} summaries", record_number, n_summaries);
 
             // Extract each summary
             for i in 0..n_summaries {
@@ -411,23 +422,55 @@ impl DAF {
                     values.push(value);
                 }
 
-                // Read integer values as f64 (like in Python implementation)
+                // Calculate the base position for integer values
+                let int_start = summary_start + (self.nd as usize * 8);
+                
+                // Read integer values as f64 (for parity with Python implementation)
                 for j in 0..self.ni as usize {
-                    let pos = summary_start + (self.nd as usize + j) * 8;
-                    // In DAF format, integers in the summary are stored as 32-bit values
-                    // in the first 4 bytes of an 8-byte field
-                    let value = match self.endian {
-                        Endian::Big => BigEndian::read_i32(&summary_data[pos..pos + 4]) as f64,
-                        Endian::Little => {
-                            LittleEndian::read_i32(&summary_data[pos..pos + 4]) as f64
-                        }
+                    // In DAF format, integers are stored as 32-bit values (4 bytes)
+                    // Two integers can fit into one 8-byte double slot.
+                    // The DAF spec defines integers as being packed into doubles:
+                    // - For 2 integers per double: pos = int_start + j/2 * 8 + (j%2)*4
+                    
+                    // Calculate position using packed integer approach
+                    let double_idx = j / 2;  // Which double slot to use
+                    let int_offset = j % 2;  // Which 4-byte chunk within the double (0 or 1)
+                    let pos = int_start + double_idx * 8 + int_offset * 4;
+                    
+                    // Make sure we don't read past the record boundary
+                    if pos + 4 <= summary_data.len() {
+                        // Read the integer as a 32-bit value and convert to f64
+                        let value = match self.endian {
+                            Endian::Big => BigEndian::read_i32(&summary_data[pos..pos + 4]) as f64,
+                            Endian::Little => {
+                                LittleEndian::read_i32(&summary_data[pos..pos + 4]) as f64
+                            }
+                        };
+                        values.push(value);
+                    } else {
+                        // If we somehow read past the record boundary, just use 0.0
+                        values.push(0.0);
+                    }
+                }
+
+                // Print the first few values for debugging (in debug builds only)
+                #[cfg(debug_assertions)]
+                {
+                    let value_display = if values.len() > 6 {
+                        format!("{:.1}, {:.1}, {:.1}, {:.0}, {:.0}, {:.0}, {:.0}...", 
+                            values[0], values[1], values[2], values[3], values[4], values[5], values[6])
+                    } else {
+                        format!("{:?}", values)
                     };
-                    values.push(value);
+                    println!("    Summary {}: {} values: {}", i, values.len(), value_display);
                 }
 
                 result.push((name, values));
             }
         }
+        
+        #[cfg(debug_assertions)]
+        println!("Total summaries extracted: {}", result.len());
 
         Ok(result)
     }

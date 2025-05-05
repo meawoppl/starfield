@@ -119,7 +119,15 @@ fn display_segments(spk: &SPK) -> Result<(HashSet<i32>, HashSet<i32>)> {
     let mut targets = HashSet::new();
     let mut centers = HashSet::new();
     
-    for segment in &spk.segments {
+    // Create a sorted copy of the segments
+    let mut sorted_segments = spk.segments.clone();
+    
+    // Sort segments by center ID first, then by target ID
+    sorted_segments.sort_by(|a, b| {
+        a.center.cmp(&b.center).then_with(|| a.target.cmp(&b.target))
+    });
+    
+    for segment in &sorted_segments {
         targets.insert(segment.target);
         centers.insert(segment.center);
         
@@ -169,15 +177,23 @@ fn display_time_coverage(earliest_date: f64, latest_date: f64) -> Result<()> {
 fn display_available_bodies(targets: &HashSet<i32>, centers: &HashSet<i32>) {
     print_section_header("Available Bodies");
     
+    // Convert HashSets to sorted vectors for ordered display
+    let mut sorted_targets: Vec<i32> = targets.iter().cloned().collect();
+    let mut sorted_centers: Vec<i32> = centers.iter().cloned().collect();
+    
+    // Sort bodies by ID
+    sorted_targets.sort();
+    sorted_centers.sort();
+    
     println!("Target bodies ({}):", targets.len());
-    for &target in targets {
+    for &target in &sorted_targets {
         println!("  - {} (ID: {})", 
             names::target_name(target).unwrap_or_else(|| "Unknown"), 
             target);
     }
     
     println!("\nCenter bodies ({}):", centers.len());
-    for &center in centers {
+    for &center in &sorted_centers {
         println!("  - {} (ID: {})", 
             names::target_name(center).unwrap_or_else(|| "Unknown"), 
             center);
