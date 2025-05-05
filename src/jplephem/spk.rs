@@ -35,7 +35,7 @@ pub fn jd_to_seconds(jd: f64) -> f64 {
 /// Spacecraft Planet Kernel (SPK) file reader
 pub struct SPK {
     /// The underlying DAF file
-    daf: DAF,
+    pub daf: DAF,
     /// List of segments in the file
     pub segments: Vec<Segment>,
     /// Map of (center, target) pairs to segment indices
