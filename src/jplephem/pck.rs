@@ -6,14 +6,12 @@
 //! The PCK format is described in:
 //! ftp://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/pck.html
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use nalgebra::Vector3;
 
 use crate::jplephem::daf::DAF;
-use crate::jplephem::errors::{JplephemError, Result};
-use crate::jplephem::names::target_name;
-use crate::jplephem::spk::{jd_to_seconds, seconds_to_jd};
+use crate::jplephem::errors::Result;
 
 /// J2000 epoch as Julian date
 const T0: f64 = 2451545.0;
@@ -92,7 +90,7 @@ impl PCK {
 
 impl Segment {
     /// Compute angles at the given time
-    pub fn compute(&mut self, tdb: f64, tdb2: f64, derivative: bool) -> Result<Vector3<f64>> {
+    pub fn compute(&mut self, _tdb: f64, _tdb2: f64, _derivative: bool) -> Result<Vector3<f64>> {
         // Implementation will go here - Chebyshev interpolation
         Ok(Vector3::new(0.0, 0.0, 0.0))
     }
@@ -100,8 +98,8 @@ impl Segment {
     /// Compute angles and rates at the given time
     pub fn compute_with_rates(
         &mut self,
-        tdb: f64,
-        tdb2: f64,
+        _tdb: f64,
+        _tdb2: f64,
     ) -> Result<(Vector3<f64>, Vector3<f64>)> {
         // Implementation will go here - Chebyshev interpolation and differentiation
         Ok((Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)))
@@ -115,7 +113,7 @@ impl Segment {
     }
 
     /// Return a textual description of the segment
-    pub fn describe(&self, verbose: bool) -> String {
+    pub fn describe(&self, _verbose: bool) -> String {
         // Implementation will go here
         // Return a description similar to the Python version
         String::new()

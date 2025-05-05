@@ -36,7 +36,20 @@ pub fn compute_calendar_date(jd_integer: i32, julian_before: Option<i32>) -> (i3
 ///
 /// Uses the proleptic Gregorian calendar.
 pub fn compute_julian_date(year: i32, month: i32, day: f64) -> f64 {
-    compute_julian_day(year, month, day.floor() as i32) as f64 - 0.5 + day.fract()
+    // In the Julian date system:
+    // JD starts at noon, so JD(2000-01-01 12:00) = 2451545.0
+    // JD(2000-01-01 00:00) = 2451544.5
+    
+    // For non-integer days, we need to convert day value to JD fraction:
+    // day = 1.0 (midnight start of day) -> JD.5
+    // day = 1.5 (noon) -> JD.0
+    
+    // First get the Julian day for the integer day
+    let day_int = day.floor() as i32;
+    let jd_noon = compute_julian_day(year, month, day_int);
+    
+    // Convert to JD for midnight and add the fractional part
+    (jd_noon as f64 - 0.5) + day.fract()
 }
 
 /// Convert (year, month, day) to Julian day integer
@@ -87,11 +100,11 @@ mod tests {
     #[test]
     fn test_julian_date_conversion() {
         // Test J2000 epoch
-        assert_eq!(compute_julian_date(2000, 1, 1.0), 2451545.5);
+        assert_eq!(compute_julian_date(2000, 1, 1.0), 2451544.5);
 
         // Test a few other dates
         assert_eq!(compute_julian_date(2020, 1, 1.5), 2458850.0);
-        assert_eq!(compute_julian_date(1969, 7, 20.0), 2440423.5);
-        assert_eq!(compute_julian_date(1900, 1, 1.0), 2415021.5);
+        assert_eq!(compute_julian_date(1969, 7, 20.0), 2440422.5);
+        assert_eq!(compute_julian_date(1900, 1, 1.0), 2415020.5);
     }
 }

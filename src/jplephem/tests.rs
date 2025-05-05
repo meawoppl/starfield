@@ -6,7 +6,6 @@
 mod tests {
     use super::super::daf::DAF;
     use super::super::errors::Result;
-    use std::path::Path;
 
     // Path to test data files
     fn test_data_path(filename: &str) -> String {

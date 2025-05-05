@@ -38,7 +38,7 @@ pub fn target_id(name: &str) -> Option<i32> {
 
 /// Title-case a target name if it looks safe to do so
 pub fn titlecase(name: &str) -> String {
-    if name.starts_with(|c: char| c == '1' || c == 'C' || c == 'D') {
+    if name.starts_with(['1', 'C', 'D']) {
         name.to_string()
     } else {
         name.split_whitespace()
@@ -101,7 +101,6 @@ const TARGET_NAME_PAIRS: &[(i32, &str)] = &[
 
 /// Common target name/ID pairs used in applications
 pub mod targets {
-    //! Common target IDs for convenient access
 
     /// Solar System Barycenter
     pub const SOLAR_SYSTEM_BARYCENTER: i32 = 0;

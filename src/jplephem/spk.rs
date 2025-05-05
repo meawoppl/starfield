@@ -7,15 +7,12 @@
 //! http://naif.jpl.nasa.gov/pub/naif/toolkit_docs/FORTRAN/req/spk.html
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::path::Path;
 
-use nalgebra::{Vector3, Vector6};
-use thiserror::Error;
+use nalgebra::Vector3;
 
 use crate::jplephem::daf::DAF;
 use crate::jplephem::errors::{JplephemError, Result};
-use crate::jplephem::names::target_name;
 
 /// J2000 epoch as Julian date
 const T0: f64 = 2451545.0;
@@ -87,12 +84,108 @@ struct SegmentData {
 impl SPK {
     /// Open an SPK file at the given path
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        // Implementation will go here
-        Ok(SPK {
-            daf: DAF::open(path)?,
+        // Open the DAF file
+        let daf = DAF::open(path)?;
+        
+        // Create the SPK structure
+        let mut spk = SPK {
+            daf,
             segments: Vec::new(),
             pairs: HashMap::new(),
-        })
+        };
+        
+        // Parse the segments from the DAF file
+        spk.parse_segments()?;
+        
+        Ok(spk)
+    }
+    
+    /// Parse segments from the DAF file
+    fn parse_segments(&mut self) -> Result<()> {
+        // Read the summaries from the DAF file
+        let summaries = self.daf.summaries()?;
+        
+        // Process each summary to extract segments
+        for (name, values) in summaries.iter() {
+            // Extract segment info
+            if values.len() < 8 || values[2..8].iter().all(|&v| v == 0.0) {
+                // Skip empty or invalid segments
+                continue;
+            }
+            
+            // Convert name bytes to a string, trimming whitespace
+            let source = String::from_utf8_lossy(name)
+                .trim_end()
+                .to_string();
+            
+            // The first two doubles are the start and end time in seconds past J2000
+            // For DE421, these are often negative (before J2000) and positive (after J2000)
+            let start_second = values[0];
+            let end_second = values[1];
+            
+            // Convert seconds to Julian date
+            let start_jd = seconds_to_jd(start_second);
+            let end_jd = seconds_to_jd(end_second);
+            
+            // The next values depend on the file format
+            // For ND=2, NI=6 (common in DE files), we have:
+            // Integer values start at index 2, which is the position self.daf.nd
+            let target: i32;
+            let center: i32;
+            let frame: i32;
+            let data_type: i32;
+            
+            // Integers are stored after the first ND doubles
+            if self.daf.nd == 2 && self.daf.ni >= 6 {
+                // Target body ID is at index 2
+                target = values[2] as i32;
+                // Center body ID is at index 3
+                center = values[3] as i32;
+                // Reference frame ID is at index 4
+                frame = values[4] as i32;
+                // Data type is at index 5
+                data_type = values[5] as i32;
+            } else {
+                // For other formats, use a more generic approach
+                target = values[values.len() - 6] as i32;
+                center = values[values.len() - 5] as i32;
+                frame = values[values.len() - 4] as i32;
+                data_type = values[values.len() - 3] as i32;
+            }
+            
+            // The last two values are the start and end indices
+            let start_i = values[values.len() - 2] as usize;
+            let end_i = values[values.len() - 1] as usize;
+            
+            // Check if the segment is valid
+            if start_i > 0 && end_i >= start_i && 
+               (start_jd > 0.0 || end_jd > 0.0) && 
+               (target != 0 || center != 0) {
+                // Create segment
+                let segment = Segment {
+                    daf: &self.daf as *const DAF,
+                    source,
+                    start_second,
+                    end_second,
+                    target,
+                    center,
+                    frame,
+                    data_type,
+                    start_i,
+                    end_i,
+                    start_jd,
+                    end_jd,
+                    data: None,
+                };
+                
+                // Add to segments list and index
+                let idx = self.segments.len();
+                self.segments.push(segment);
+                self.pairs.insert((center, target), idx);
+            }
+        }
+        
+        Ok(())
     }
 
     /// Return the segment for the given center and target body IDs
@@ -101,7 +194,7 @@ impl SPK {
         self.pairs
             .get(&(center, target))
             .map(|&idx| &self.segments[idx])
-            .ok_or_else(|| JplephemError::BodyNotFound { center, target })
+            .ok_or(JplephemError::BodyNotFound { center, target })
     }
 
     /// Read the comments from the SPK file
@@ -118,7 +211,7 @@ impl SPK {
 
 impl Segment {
     /// Compute position at the given time
-    pub fn compute(&mut self, tdb: f64, tdb2: f64) -> Result<Vector3<f64>> {
+    pub fn compute(&mut self, _tdb: f64, _tdb2: f64) -> Result<Vector3<f64>> {
         // Implementation will go here - Chebyshev interpolation
         Ok(Vector3::new(0.0, 0.0, 0.0))
     }
@@ -126,8 +219,8 @@ impl Segment {
     /// Compute position and velocity at the given time
     pub fn compute_and_differentiate(
         &mut self,
-        tdb: f64,
-        tdb2: f64,
+        _tdb: f64,
+        _tdb2: f64,
     ) -> Result<(Vector3<f64>, Vector3<f64>)> {
         // Implementation will go here - Chebyshev interpolation and differentiation
         Ok((Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)))
@@ -141,7 +234,7 @@ impl Segment {
     }
 
     /// Return a textual description of the segment
-    pub fn describe(&self, verbose: bool) -> String {
+    pub fn describe(&self, _verbose: bool) -> String {
         // Implementation will go here
         // Return a description similar to the Python version
         String::new()

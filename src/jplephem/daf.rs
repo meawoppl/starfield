@@ -6,7 +6,7 @@
 //! The DAF format is described in:
 //! http://naif.jpl.nasa.gov/pub/naif/toolkit_docs/FORTRAN/req/daf.html
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use memmap2::{Mmap, MmapOptions};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -397,7 +397,7 @@ impl DAF {
 
                 // Get summary values from summary record
                 let summary_start = 24 + start_pos; // 24 is the size of the control values
-                let summary_end = summary_start + self.summary_length;
+                let _summary_end = summary_start + self.summary_length;
 
                 let mut values = Vec::with_capacity(self.nd as usize + self.ni as usize);
 
@@ -414,6 +414,8 @@ impl DAF {
                 // Read integer values as f64 (like in Python implementation)
                 for j in 0..self.ni as usize {
                     let pos = summary_start + (self.nd as usize + j) * 8;
+                    // In DAF format, integers in the summary are stored as 32-bit values
+                    // in the first 4 bytes of an 8-byte field
                     let value = match self.endian {
                         Endian::Big => BigEndian::read_i32(&summary_data[pos..pos + 4]) as f64,
                         Endian::Little => {
