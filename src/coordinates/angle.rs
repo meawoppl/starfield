@@ -92,8 +92,12 @@ impl Angle {
     /// ```
     fn new(value: f64, format: AngleFormat) -> Self {
         match format {
-            AngleFormat::Degrees(_) => Angle { angle: AngleFormat::Degrees(value) },
-            AngleFormat::Radians(_) => Angle { angle: AngleFormat::Radians(value) },
+            AngleFormat::Degrees(_) => Angle {
+                angle: AngleFormat::Degrees(value),
+            },
+            AngleFormat::Radians(_) => Angle {
+                angle: AngleFormat::Radians(value),
+            },
         }
     }
 
@@ -231,7 +235,7 @@ mod tests {
     fn test_angle_from_degrees_exact_storage() {
         let angle = Angle::from_degrees(45.0);
         assert_eq!(angle.to_degrees(), 45.0);
-        
+
         // Verify internal storage format
         match angle.format() {
             AngleFormat::Degrees(val) => assert_eq!(val, 45.0),
@@ -243,7 +247,7 @@ mod tests {
     fn test_angle_from_radians_exact_storage() {
         let angle = Angle::from_radians(PI / 4.0);
         assert_eq!(angle.to_radians(), PI / 4.0);
-        
+
         // Verify internal storage format
         match angle.format() {
             AngleFormat::Radians(val) => assert_eq!(val, PI / 4.0),
@@ -278,8 +282,11 @@ mod tests {
 
         for (degrees, expected_radians) in test_cases {
             let angle = Angle::from_degrees(degrees);
-            assert!((angle.to_radians() - expected_radians).abs() < 1e-14,
-                   "Failed for {} degrees", degrees);
+            assert!(
+                (angle.to_radians() - expected_radians).abs() < 1e-14,
+                "Failed for {} degrees",
+                degrees
+            );
             assert_eq!(angle.to_degrees(), degrees); // Exact for degrees
         }
     }
@@ -297,8 +304,11 @@ mod tests {
 
         for (radians, expected_degrees) in test_cases {
             let angle = Angle::from_radians(radians);
-            assert!((angle.to_degrees() - expected_degrees).abs() < 1e-13,
-                   "Failed for {} radians", radians);
+            assert!(
+                (angle.to_degrees() - expected_degrees).abs() < 1e-13,
+                "Failed for {} radians",
+                radians
+            );
             assert_eq!(angle.to_radians(), radians); // Exact for radians
         }
     }
@@ -323,7 +333,7 @@ mod tests {
         let radians = angle.to_radians();
         let angle_from_rad = Angle::from_radians(radians);
         let back_to_degrees = angle_from_rad.to_degrees();
-        
+
         assert!((back_to_degrees - original_degrees).abs() < 1e-14);
 
         // Test round-trip precision: radians -> degrees -> radians
@@ -332,7 +342,7 @@ mod tests {
         let degrees = angle.to_degrees();
         let angle_from_deg = Angle::from_degrees(degrees);
         let back_to_radians = angle_from_deg.to_radians();
-        
+
         assert!((back_to_radians - original_radians).abs() < 1e-14);
     }
 
@@ -351,7 +361,7 @@ mod tests {
     fn test_zero_angle() {
         let zero_deg = Angle::from_degrees(0.0);
         let zero_rad = Angle::from_radians(0.0);
-        
+
         assert_eq!(zero_deg.to_degrees(), 0.0);
         assert_eq!(zero_deg.to_radians(), 0.0);
         assert_eq!(zero_rad.to_radians(), 0.0);
@@ -363,7 +373,7 @@ mod tests {
         let angle1 = Angle::from_degrees(90.0);
         let angle2 = Angle::from_degrees(90.0);
         let angle3 = Angle::from_radians(PI / 2.0);
-        
+
         assert_eq!(angle1, angle2);
         assert_ne!(angle1, angle3); // Different internal representations
     }
@@ -373,7 +383,7 @@ mod tests {
         let tiny_degrees = 1e-10;
         let angle = Angle::from_degrees(tiny_degrees);
         assert_eq!(angle.to_degrees(), tiny_degrees);
-        
+
         let tiny_radians = 1e-15;
         let angle = Angle::from_radians(tiny_radians);
         assert_eq!(angle.to_radians(), tiny_radians);
@@ -385,7 +395,7 @@ mod tests {
         let angle = Angle::from_degrees(large_degrees);
         assert_eq!(angle.to_degrees(), large_degrees);
         assert!((angle.to_radians() - 4.0 * PI).abs() < 1e-13);
-        
+
         let large_radians = 10.0 * PI;
         let angle = Angle::from_radians(large_radians);
         assert_eq!(angle.to_radians(), large_radians);
@@ -396,16 +406,15 @@ mod tests {
     fn test_format_inspection() {
         let deg_angle = Angle::from_degrees(30.0);
         let rad_angle = Angle::from_radians(PI / 6.0);
-        
+
         match deg_angle.format() {
             AngleFormat::Degrees(val) => assert_eq!(val, 30.0),
             _ => panic!("Expected degrees format"),
         }
-        
+
         match rad_angle.format() {
             AngleFormat::Radians(val) => assert_eq!(val, PI / 6.0),
             _ => panic!("Expected radians format"),
         }
     }
 }
-

@@ -179,7 +179,7 @@ impl Cartesian3 {
     /// ```
     pub fn to_spherical(&self) -> (f64, f64, f64) {
         let distance = self.magnitude();
-        
+
         if distance == 0.0 {
             return (0.0, 0.0, 0.0);
         }
@@ -307,7 +307,7 @@ impl Cartesian3 {
     /// let x_axis = Cartesian3::new(1.0, 0.0, 0.0);
     /// let y_axis = Cartesian3::new(0.0, 1.0, 0.0);
     /// let z_axis = x_axis.cross(&y_axis);
-    /// 
+    ///
     /// assert!((z_axis.x - 0.0).abs() < 1e-15);
     /// assert!((z_axis.y - 0.0).abs() < 1e-15);
     /// assert!((z_axis.z - 1.0).abs() < 1e-15);
@@ -347,13 +347,13 @@ impl Cartesian3 {
     pub fn angular_distance(&self, other: &Cartesian3) -> f64 {
         let dot_product = self.dot(other);
         let mag_product = self.magnitude() * other.magnitude();
-        
+
         if mag_product == 0.0 {
             return 0.0;
         }
-        
+
         let cos_angle = dot_product / mag_product;
-        
+
         // Handle numerical precision issues
         if cos_angle >= 1.0 {
             0.0
@@ -493,7 +493,7 @@ mod tests {
     fn test_normalize() {
         let coord = Cartesian3::new(3.0, 4.0, 0.0);
         let normalized = coord.normalize().unwrap();
-        
+
         assert!((normalized.magnitude() - 1.0).abs() < 1e-15);
         assert!((normalized.x - 0.6).abs() < 1e-15);
         assert!((normalized.y - 0.8).abs() < 1e-15);
@@ -642,7 +642,7 @@ mod tests {
     fn test_vector3_conversions() {
         let coord = Cartesian3::new(1.0, 2.0, 3.0);
         let vec = coord.to_vector3();
-        
+
         assert_eq!(vec.x, 1.0);
         assert_eq!(vec.y, 2.0);
         assert_eq!(vec.z, 3.0);
@@ -654,26 +654,39 @@ mod tests {
     #[test]
     fn test_round_trip_spherical_conversion() {
         let test_cases = vec![
-            (0.0, 0.0),           // Vernal equinox
-            (PI / 2.0, 0.0),      // RA = 90°
-            (PI, 0.0),            // RA = 180°
+            (0.0, 0.0),            // Vernal equinox
+            (PI / 2.0, 0.0),       // RA = 90°
+            (PI, 0.0),             // RA = 180°
             (3.0 * PI / 2.0, 0.0), // RA = 270°
-            (0.0, PI / 4.0),      // Dec = 45°
-            (0.0, -PI / 4.0),     // Dec = -45°
-            (PI / 3.0, PI / 6.0), // RA = 60°, Dec = 30°
+            (0.0, PI / 4.0),       // Dec = 45°
+            (0.0, -PI / 4.0),      // Dec = -45°
+            (PI / 3.0, PI / 6.0),  // RA = 60°, Dec = 30°
         ];
 
         for (ra, dec) in test_cases {
             let original_coord = Cartesian3::from_spherical(ra, dec, 1.0);
             let (converted_ra, converted_dec, converted_dist) = original_coord.to_spherical();
-            let round_trip_coord = Cartesian3::from_spherical(converted_ra, converted_dec, converted_dist);
+            let round_trip_coord =
+                Cartesian3::from_spherical(converted_ra, converted_dec, converted_dist);
 
-            assert!((original_coord.x - round_trip_coord.x).abs() < 1e-14,
-                   "X mismatch for RA={}, Dec={}", ra, dec);
-            assert!((original_coord.y - round_trip_coord.y).abs() < 1e-14,
-                   "Y mismatch for RA={}, Dec={}", ra, dec);
-            assert!((original_coord.z - round_trip_coord.z).abs() < 1e-14,
-                   "Z mismatch for RA={}, Dec={}", ra, dec);
+            assert!(
+                (original_coord.x - round_trip_coord.x).abs() < 1e-14,
+                "X mismatch for RA={}, Dec={}",
+                ra,
+                dec
+            );
+            assert!(
+                (original_coord.y - round_trip_coord.y).abs() < 1e-14,
+                "Y mismatch for RA={}, Dec={}",
+                ra,
+                dec
+            );
+            assert!(
+                (original_coord.z - round_trip_coord.z).abs() < 1e-14,
+                "Z mismatch for RA={}, Dec={}",
+                ra,
+                dec
+            );
         }
     }
 
@@ -696,11 +709,8 @@ mod tests {
     #[test]
     fn test_precision_preservation() {
         // Test that very precise values are preserved
-        let precise_coord = Cartesian3::new(
-            0.123456789012345,
-            0.987654321098765,
-            0.555666777888999
-        );
+        let precise_coord =
+            Cartesian3::new(0.123456789012345, 0.987654321098765, 0.555666777888999);
 
         assert_eq!(precise_coord.x, 0.123456789012345);
         assert_eq!(precise_coord.y, 0.987654321098765);
