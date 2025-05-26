@@ -27,7 +27,7 @@ pub mod time;
 pub mod units;
 
 // Re-export commonly used types
-pub use coordinates::RaDec;
+pub use coordinates::Equatorial;
 pub use time::{CalendarTuple, Time, Timescale};
 
 /// Main error type for the starfield library
