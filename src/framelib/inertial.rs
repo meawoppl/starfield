@@ -6,12 +6,8 @@ use once_cell::sync::Lazy;
 // Static transformation matrices
 
 // These should be the transformation matrices FROM equatorial TO the other system
-static EQ_TO_EC: Lazy<Matrix3<f64>> = Lazy::new(|| {
-    frame_rotations::INERTIAL_FRAMES
-        .get("ECLIPJ2000")
-        .unwrap()
-        .clone()
-});
+static EQ_TO_EC: Lazy<Matrix3<f64>> =
+    Lazy::new(|| *frame_rotations::INERTIAL_FRAMES.get("ECLIPJ2000").unwrap());
 
 static EC_TO_EQ: Lazy<Matrix3<f64>> = Lazy::new(|| {
     frame_rotations::INERTIAL_FRAMES
@@ -21,12 +17,8 @@ static EC_TO_EQ: Lazy<Matrix3<f64>> = Lazy::new(|| {
         .unwrap()
 });
 
-static EQ_TO_GAL: Lazy<Matrix3<f64>> = Lazy::new(|| {
-    frame_rotations::INERTIAL_FRAMES
-        .get("GALACTIC")
-        .unwrap()
-        .clone()
-});
+static EQ_TO_GAL: Lazy<Matrix3<f64>> =
+    Lazy::new(|| *frame_rotations::INERTIAL_FRAMES.get("GALACTIC").unwrap());
 
 static GAL_TO_EQ: Lazy<Matrix3<f64>> = Lazy::new(|| {
     frame_rotations::INERTIAL_FRAMES
@@ -133,20 +125,20 @@ impl InertialFrame for Equatorial {
 }
 
 // Conversions FROM Equatorial
-impl Into<Ecliptic> for Equatorial {
-    fn into(self) -> Ecliptic {
+impl From<Equatorial> for Ecliptic {
+    fn from(val: Equatorial) -> Self {
         // Convert equatorial cartesian to ecliptic cartesian
-        let eq_cart = self.to_cartesian();
-        let ec_cart = EQ_TO_EC.clone() * eq_cart.to_vector3();
+        let eq_cart = val.to_cartesian();
+        let ec_cart = *EQ_TO_EC * eq_cart.to_vector3();
         Ecliptic::from_cartesian(Cartesian3::from_vector3(ec_cart))
     }
 }
 
-impl Into<Galactic> for Equatorial {
-    fn into(self) -> Galactic {
+impl From<Equatorial> for Galactic {
+    fn from(val: Equatorial) -> Self {
         // Convert equatorial cartesian to galactic cartesian
-        let eq_cart = self.to_cartesian();
-        let gal_cart = EQ_TO_GAL.clone() * eq_cart.to_vector3();
+        let eq_cart = val.to_cartesian();
+        let gal_cart = *EQ_TO_GAL * eq_cart.to_vector3();
         Galactic::from_cartesian(Cartesian3::from_vector3(gal_cart))
     }
 }
@@ -171,19 +163,19 @@ impl InertialFrame for Ecliptic {
 }
 
 // Conversions FROM Ecliptic
-impl Into<Equatorial> for Ecliptic {
-    fn into(self) -> Equatorial {
+impl From<Ecliptic> for Equatorial {
+    fn from(val: Ecliptic) -> Self {
         // Convert ecliptic cartesian to equatorial cartesian
-        let ec_cart = self.to_cartesian();
-        let eq_cart = EC_TO_EQ.clone() * ec_cart.to_vector3();
+        let ec_cart = val.to_cartesian();
+        let eq_cart = *EC_TO_EQ * ec_cart.to_vector3();
         Equatorial::from_cartesian(Cartesian3::from_vector3(eq_cart))
     }
 }
 
-impl Into<Galactic> for Ecliptic {
-    fn into(self) -> Galactic {
+impl From<Ecliptic> for Galactic {
+    fn from(val: Ecliptic) -> Self {
         // First convert to equatorial, then to galactic
-        let equatorial: Equatorial = self.into();
+        let equatorial: Equatorial = val.into();
         equatorial.into()
     }
 }
@@ -208,19 +200,19 @@ impl InertialFrame for Galactic {
 }
 
 // Conversions FROM Galactic
-impl Into<Equatorial> for Galactic {
-    fn into(self) -> Equatorial {
+impl From<Galactic> for Equatorial {
+    fn from(val: Galactic) -> Self {
         // Convert galactic cartesian to equatorial cartesian
-        let gal_cart = self.to_cartesian();
-        let eq_cart = GAL_TO_EQ.clone() * gal_cart.to_vector3();
+        let gal_cart = val.to_cartesian();
+        let eq_cart = *GAL_TO_EQ * gal_cart.to_vector3();
         Equatorial::from_cartesian(Cartesian3::from_vector3(eq_cart))
     }
 }
 
-impl Into<Ecliptic> for Galactic {
-    fn into(self) -> Ecliptic {
+impl From<Galactic> for Ecliptic {
+    fn from(val: Galactic) -> Self {
         // First convert to equatorial, then to ecliptic
-        let equatorial: Equatorial = self.into();
+        let equatorial: Equatorial = val.into();
         equatorial.into()
     }
 }
