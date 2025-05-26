@@ -4,7 +4,6 @@ use nalgebra::Matrix3;
 use once_cell::sync::Lazy;
 
 // Static transformation matrices
-static IDENTITY: Lazy<Matrix3<f64>> = Lazy::new(|| Matrix3::identity());
 
 // These should be the transformation matrices FROM equatorial TO the other system
 static EQ_TO_EC: Lazy<Matrix3<f64>> = Lazy::new(|| {
@@ -50,15 +49,57 @@ pub trait InertialFrame: Sized {
         let magnitude1 = cart1.magnitude();
         let magnitude2 = cart2.magnitude();
 
-        (dot_product / (magnitude1 * magnitude2)).acos()
+        let cos_angle = dot_product / (magnitude1 * magnitude2);
+
+        // Handle numerical precision issues
+        if cos_angle >= 1.0 {
+            0.0
+        } else if cos_angle <= -1.0 {
+            std::f64::consts::PI
+        } else {
+            cos_angle.acos()
+        }
     }
 }
 
 // Equatorial coordinates (RA/Dec)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Equatorial {
     pub ra: f64,  // Right ascension in radians
     pub dec: f64, // Declination in radians
+}
+
+impl Equatorial {
+    pub fn new(ra: f64, dec: f64) -> Self {
+        let normalized_ra = ra.rem_euclid(2.0 * std::f64::consts::PI);
+        Equatorial {
+            ra: normalized_ra,
+            dec,
+        }
+    }
+
+    /// Create a new Equatorial coordinate with values in degrees
+    pub fn from_degrees(ra_deg: f64, dec_deg: f64) -> Self {
+        Self::new(
+            ra_deg * std::f64::consts::PI / 180.0,
+            dec_deg * std::f64::consts::PI / 180.0,
+        )
+    }
+
+    /// Get right ascension in degrees
+    pub fn ra_degrees(&self) -> f64 {
+        self.ra * 180.0 / std::f64::consts::PI
+    }
+
+    /// Get declination in degrees
+    pub fn dec_degrees(&self) -> f64 {
+        self.dec * 180.0 / std::f64::consts::PI
+    }
+
+    /// Calculate angular distance to another Equatorial coordinate in radians
+    pub fn angular_distance(&self, other: &Equatorial) -> f64 {
+        self.angle_between(other)
+    }
 }
 
 // Ecliptic coordinates
@@ -87,10 +128,7 @@ impl InertialFrame for Equatorial {
 
     fn from_cartesian(cart: Cartesian3) -> Self {
         let r_xy = (cart.x * cart.x + cart.y * cart.y).sqrt();
-        Equatorial {
-            ra: cart.y.atan2(cart.x),
-            dec: cart.z.atan2(r_xy),
-        }
+        Equatorial::new(cart.y.atan2(cart.x), cart.z.atan2(r_xy))
     }
 }
 
@@ -191,7 +229,6 @@ impl Into<Ecliptic> for Galactic {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use nalgebra::Vector1;
     use nalgebra::Vector3;
     use rand::rngs::StdRng;
     use rand::Rng;
@@ -305,7 +342,7 @@ mod tests {
         };
         let cart5 = eq5.to_cartesian();
         // cos(PI/4) = sin(PI/4) = 1/sqrt(2)
-        let val = (1.0 / 2.0_f64.sqrt());
+        let val = 1.0 / 2.0_f64.sqrt();
         assert_relative_eq!(cart5.x, val * val, epsilon = 1e-9); // cos(dec)*cos(ra) = (1/sqrt(2))*(1/sqrt(2)) = 1/2
         assert_relative_eq!(cart5.y, val * val, epsilon = 1e-9); // cos(dec)*sin(ra) = (1/sqrt(2))*(1/sqrt(2)) = 1/2
         assert_relative_eq!(cart5.z, val, epsilon = 1e-9); // sin(dec) = 1/sqrt(2)
@@ -419,7 +456,7 @@ mod tests {
         };
         let cart5 = ec5.to_cartesian();
         // cos(PI/4) = sin(PI/4) = 1/sqrt(2)
-        let val = (1.0 / 2.0_f64.sqrt());
+        let val = 1.0 / 2.0_f64.sqrt();
         assert_relative_eq!(cart5.x, val * val, epsilon = 1e-9); // cos(lat)*cos(lon)
         assert_relative_eq!(cart5.y, val * val, epsilon = 1e-9); // cos(lat)*sin(lon)
         assert_relative_eq!(cart5.z, val, epsilon = 1e-9); // sin(lat)
@@ -525,7 +562,7 @@ mod tests {
             lat: PI / 4.0,
         };
         let cart5 = gal5.to_cartesian();
-        let val = (1.0 / 2.0_f64.sqrt());
+        let val = 1.0 / 2.0_f64.sqrt();
         assert_relative_eq!(cart5.x, val * val, epsilon = 1e-9);
         assert_relative_eq!(cart5.y, val * val, epsilon = 1e-9);
         assert_relative_eq!(cart5.z, val, epsilon = 1e-9);
@@ -634,6 +671,27 @@ mod tests {
             assert_relative_eq!(eq1.ra, eq2.ra, epsilon = 1e-4);
             assert_relative_eq!(eq1.dec, eq2.dec, epsilon = 1e-4);
         }
+    }
+
+    #[test]
+    fn test_angle_between() {
+        // Test angle between same point (should be 0)
+        let eq1 = Equatorial { ra: 0.0, dec: 0.0 };
+        let eq2 = Equatorial { ra: 0.0, dec: 0.0 };
+        assert_relative_eq!(eq1.angle_between(&eq2), 0.0, epsilon = 1e-9);
+
+        // Test angle between opposite points (should be π)
+        let eq3 = Equatorial { ra: 0.0, dec: 0.0 };
+        let eq4 = Equatorial { ra: PI, dec: 0.0 };
+        assert_relative_eq!(eq3.angle_between(&eq4), PI, epsilon = 1e-9);
+
+        // Test angle between perpendicular points (should be π/2)
+        let eq5 = Equatorial { ra: 0.0, dec: 0.0 };
+        let eq6 = Equatorial {
+            ra: 0.0,
+            dec: PI / 2.0,
+        };
+        assert_relative_eq!(eq5.angle_between(&eq6), PI / 2.0, epsilon = 1e-9);
     }
 
     #[test]

@@ -1,2 +1,2 @@
 mod frame_rotations;
-mod inertial;
+pub mod inertial;
