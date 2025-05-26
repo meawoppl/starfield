@@ -31,9 +31,19 @@ pub fn target_name(id: i32) -> Option<&'static str> {
     TARGET_NAMES.get(&id).copied()
 }
 
+/// Get the name of a target given its ID number (alias for target_name)
+pub fn get_target_name(id: i32) -> Option<&'static str> {
+    target_name(id)
+}
+
 /// Get the ID number of a target given its name
 pub fn target_id(name: &str) -> Option<i32> {
     TARGET_IDS.get(&name.to_lowercase()).copied()
+}
+
+/// Get the ID number of a target given its name (alias for target_id)
+pub fn get_target_id(name: &str) -> Option<i32> {
+    target_id(name)
 }
 
 /// Title-case a target name if it looks safe to do so

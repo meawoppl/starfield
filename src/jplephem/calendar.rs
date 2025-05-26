@@ -39,15 +39,15 @@ pub fn compute_julian_date(year: i32, month: i32, day: f64) -> f64 {
     // In the Julian date system:
     // JD starts at noon, so JD(2000-01-01 12:00) = 2451545.0
     // JD(2000-01-01 00:00) = 2451544.5
-    
+
     // For non-integer days, we need to convert day value to JD fraction:
     // day = 1.0 (midnight start of day) -> JD.5
     // day = 1.5 (noon) -> JD.0
-    
+
     // First get the Julian day for the integer day
     let day_int = day.floor() as i32;
     let jd_noon = compute_julian_day(year, month, day_int);
-    
+
     // Convert to JD for midnight and add the fractional part
     (jd_noon as f64 - 0.5) + day.fract()
 }
@@ -69,6 +69,21 @@ pub fn compute_julian_day(year: i32, month: i32, day: i32) -> i32 {
 pub fn format_date(jd: f64) -> String {
     let (year, month, day) = compute_calendar_date(jd as i32, None);
     format!("{:04}-{:02}-{:02}", year, month, day)
+}
+
+/// Convert a Julian date to a calendar date (year, month, day)
+/// Used for compatibility with python-jplephem
+pub fn calendar_date_from_float(jd: f64) -> (i32, i32, i32) {
+    // Algorithm from Astronomical Almanac, simplified for Julian Date at midnight
+
+    // Apply 0.5 day offset since astronomical JD starts at noon
+    // This function is specifically designed to match the Python implementation
+    // in jplephem, which doesn't include time-of-day, for our test compatibility
+
+    let i = (jd + 0.5) as i32;
+
+    // For simplicity, we'll use the proleptic Gregorian calendar
+    compute_calendar_date(i, None)
 }
 
 #[cfg(test)]

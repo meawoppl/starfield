@@ -16,9 +16,11 @@
 //! - `spk`: Spacecraft Planet Kernel format reader
 //! - `pck`: Planetary Constants Kernel format reader (for rotation data)
 //! - `names`: Mappings between celestial body names and ID numbers
+//! - `chebyshev`: Chebyshev polynomial implementation for trajectory interpolation
 //! - Error types for proper error handling
 
 pub mod calendar;
+pub mod chebyshev;
 pub mod daf;
 pub mod errors;
 pub mod names;
@@ -29,6 +31,7 @@ pub mod spk;
 mod tests;
 
 // Re-export primary types for convenience
+pub use self::chebyshev::{normalize_time, rescale_derivative, ChebyshevPolynomial};
 pub use self::errors::JplephemError;
 pub use self::pck::PCK;
 pub use self::spk::SPK;
