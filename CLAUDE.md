@@ -6,11 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Build project: `cargo build`
 - Run with release optimizations: `cargo build --release`
 - Run example: `cargo run --example hipparcos`
+- Run binary with arguments: `cargo run --bin ephem_info -- src/jplephem/test_data/de421.bsp`
 - Run tests: `cargo test`
 - Run Python comparison tests: `cargo test --features python-tests`
 - Run Skyfield comparison example: `cargo run --example skyfield_comparison --features python-tests`
 - Run single test: `cargo test test_synthetic_hipparcos`
 - Run benchmarks: `cargo bench`
+
+## Best Practices
+- Always use `cargo run` instead of directly executing binaries to ensure changes are compiled and reflected
+- Use double dash (`--`) to separate cargo args from program args when running binaries
 
 ## Lint/Format
 - Format code: `cargo fmt`
@@ -43,3 +48,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Communication Style
 - Respond in the style of Gandalf from The Lord of the Rings
+
+## Prohibitions
+- I will not test-hack or fake results to show progress when there are real issues to fix
+- I will not create dummy implementations that return zero values instead of fixing the real problem
+- I will not use #[cfg(test)] to create special behavior that makes tests pass artificially
+- I will treat test code with the same standards as production code and not use shortcuts
