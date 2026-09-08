@@ -23,6 +23,13 @@ const JPL_BSP_URL: &str = "https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/";
 const NAIF_SATELLITES_URL: &str =
     "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/";
 
+/// Base URL for NAIF generic PCK kernels
+///
+/// Holds both the text kernels (`.tpc`, e.g. `pck00011.tpc`, which carries the
+/// IAU/WGCCRE radii and rotational elements) and the binary kernels (`.bpc`,
+/// e.g. `moon_pa_de440_200625.bpc` and `earth_latest_high_prec.bpc`).
+pub const NAIF_PCK_URL: &str = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/";
+
 /// Get the cache directory path
 pub fn get_cache_dir() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -160,6 +167,12 @@ fn decompress_gzip<P: AsRef<Path>, Q: AsRef<Path>>(gz_path: P, output_path: Q) -
 ///
 /// Returns `Some(full_url)` if the filename matches a known pattern,
 /// `None` otherwise. Full URLs (containing `://`) pass through unchanged.
+///
+/// Recognized patterns:
+///
+/// - `*.bsp` — SPK ephemerides, from JPL, or from the NAIF satellite
+///   directory when the name starts with `jup`
+/// - `*.tpc`, `*.bpc` — text and binary PCK kernels, from [`NAIF_PCK_URL`]
 pub fn resolve_url(filename: &str) -> Option<String> {
     if filename.contains("://") {
         return Some(filename.to_string());
@@ -172,6 +185,10 @@ pub fn resolve_url(filename: &str) -> Option<String> {
             JPL_BSP_URL
         };
         return Some(format!("{}{}", base, filename));
+    }
+
+    if filename.ends_with(".tpc") || filename.ends_with(".bpc") {
+        return Some(format!("{}{}", NAIF_PCK_URL, filename));
     }
 
     None
@@ -369,6 +386,25 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_url_text_pck() {
+        assert_eq!(
+            resolve_url("pck00011.tpc"),
+            Some("https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_url_binary_pck() {
+        assert_eq!(
+            resolve_url("moon_pa_de440_200625.bpc"),
+            Some(
+                "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/moon_pa_de440_200625.bpc"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
     fn test_resolve_url_full_url_passthrough() {
         let url = "https://example.com/custom.bsp";
         assert_eq!(resolve_url(url), Some(url.to_string()));
@@ -402,7 +438,14 @@ mod tests {
     /// This catches broken URLs in CI without streaming large files.
     #[test]
     fn test_known_endpoints_reachable() {
-        let filenames = ["de421.bsp", "de405.bsp", "de430t.bsp", "jup365.bsp"];
+        let filenames = [
+            "de421.bsp",
+            "de405.bsp",
+            "de430t.bsp",
+            "jup365.bsp",
+            "pck00011.tpc",
+            "moon_pa_de440_200625.bpc",
+        ];
 
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(15))
