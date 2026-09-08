@@ -2,6 +2,9 @@ mod frame_rotations;
 pub mod inertial;
 pub mod random;
 
+#[cfg(feature = "python-tests")]
+mod python_tests;
+
 use crate::constants::ASEC2RAD;
 use crate::time::Time;
 use nalgebra::Matrix3;
@@ -69,6 +72,32 @@ impl Frame for EclipticOfDateFrame {
     }
 }
 
+/// ITRS — the Earth-fixed frame of the IERS conventions.
+///
+/// `rotation_at` returns [`Time::c_matrix`], which already is the complete
+/// ICRF → ITRS chain: frame bias, precession and nutation (the `M` matrix),
+/// the daily rotation `R_z(-GAST)`, and polar motion `W` when a polar motion
+/// table has been loaded into the [`crate::time::Timescale`]. Nothing is
+/// recomputed here; this type only gives that rotation a [`Frame`] identity so
+/// it can be used wherever body-fixed frames are accepted.
+///
+/// Use this frame for the Earth. The WGCCRE / IAU rotational elements that
+/// serve other bodies are only accurate to roughly a tenth of a degree for the
+/// Earth, because they ignore nutation and the observed variation of the
+/// rotation rate; `c_matrix` is IERS-grade.
+///
+/// The transpose maps ITRS → ICRF (see [`Time::ct_matrix`]), which is how a
+/// site on the ground becomes a geocentric offset.
+///
+/// Matches Skyfield's `skyfield.framelib.itrs`.
+pub struct ItrsFrame;
+
+impl Frame for ItrsFrame {
+    fn rotation_at(&self, t: &Time) -> Matrix3<f64> {
+        t.c_matrix()
+    }
+}
+
 /// Galactic coordinate frame (static rotation).
 pub struct GalacticFrame;
 
@@ -84,6 +113,7 @@ pub static TRUE_EQUATOR_OF_DATE: TrueEquatorFrame = TrueEquatorFrame;
 pub static ECLIPTIC_J2000: EclipticJ2000Frame = EclipticJ2000Frame;
 pub static ECLIPTIC_OF_DATE: EclipticOfDateFrame = EclipticOfDateFrame;
 pub static GALACTIC: GalacticFrame = GalacticFrame;
+pub static ITRS: ItrsFrame = ItrsFrame;
 
 /// ECLIPJ2000 rotation matrix: equatorial J2000 to ecliptic J2000.
 ///
@@ -132,3 +162,62 @@ pub static ICRS_TO_J2000: Lazy<Matrix3<f64>> = Lazy::new(|| {
 
     Matrix3::new(xx, xy, xz, yx, yy, yz, zx, zy, zz)
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::jplephem::kernel::SpiceKernel;
+    use crate::jplephem_ext::SpiceKernelExt;
+    use crate::time::Timescale;
+    use crate::toposlib::WGS84;
+
+    /// `ItrsFrame` and `GeographicPosition::at` must agree.
+    ///
+    /// Both go through `Time::c_matrix`, so this is a guard against one of them
+    /// drifting away from the other, not a discovery.
+    #[test]
+    fn test_itrs_frame_matches_geographic_position() {
+        let mut kernel = SpiceKernel::open("test_data/de421.bsp").expect("Failed to open DE421");
+        let ts = Timescale::default();
+        let boston = WGS84.latlon(42.3583, -71.0603, 43.0);
+
+        for jd in [2451545.0, 2455000.5, 2458849.5] {
+            let t = ts.tdb_jd(jd);
+            let earth = kernel.at("earth", &t).unwrap();
+            let observer = boston.at(&t, &mut kernel).unwrap();
+            let gcrs_offset = observer.position - earth.position;
+
+            let from_frame = ItrsFrame.rotation_at(&t).transpose() * boston.itrs_xyz;
+
+            for axis in 0..3 {
+                let diff = (from_frame[axis] - gcrs_offset[axis]).abs();
+                assert!(
+                    diff < 1e-15,
+                    "axis {axis} at JD {jd}: frame={} topos={} diff={diff}",
+                    from_frame[axis],
+                    gcrs_offset[axis]
+                );
+            }
+        }
+    }
+
+    /// The ITRS rotation is orthonormal at every epoch.
+    #[test]
+    fn test_itrs_frame_is_orthonormal() {
+        let ts = Timescale::default();
+        for jd in [2451545.0, 2458849.5, 2460000.5] {
+            let r = ItrsFrame.rotation_at(&ts.tt_jd(jd, None));
+            let should_be_identity = r * r.transpose();
+            for i in 0..3 {
+                for j in 0..3 {
+                    let expected = if i == j { 1.0 } else { 0.0 };
+                    assert!(
+                        (should_be_identity[(i, j)] - expected).abs() < 1e-12,
+                        "R·Rᵀ[{i},{j}] at JD {jd} = {}",
+                        should_be_identity[(i, j)]
+                    );
+                }
+            }
+        }
+    }
+}
