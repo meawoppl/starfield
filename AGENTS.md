@@ -109,5 +109,23 @@ A clone of the Python Skyfield source lives at `python-skyfield/` for reference.
 
 In `Cargo.toml`: `python-tests = ["pyo3", "numpy", "anyhow"]`. The `src/pybridge/` module is only compiled when this feature is enabled. Standard `cargo test` skips all Python comparison tests.
 
+## Embedded Reference Data
+
+Reference tables that must work without a network live next to the code that
+reads them and are pulled in with `include_str!`. The pattern, established by
+`src/planetarylib/iau2015.csv`:
+
+- Comment header (`#` lines) naming the upstream file, its retrieval URL, the
+  published reference, and the meaning and units of every column.
+- One header row of column names, then one row per entity. Fields are comma
+  separated; multi-valued fields are space separated inside a single field, so
+  the file needs no quoting and no CSV crate.
+- Parsed once into a `std::sync::LazyLock<HashMap<..>>`, with the parse errors
+  surfaced as `StarfieldError::DataError` and an `.expect()` at the `LazyLock`,
+  since a malformed embedded table is a build-time mistake.
+- Checked in alongside a verbatim excerpt of the upstream file (here
+  `src/planetarylib/pck00011_excerpt.tpc`) so a unit test can assert the table
+  and the original agree. Do not check in whole kernels; excerpt them.
+
 ## Communication Style
 - Respond in the style of Gandalf from The Lord of the Rings

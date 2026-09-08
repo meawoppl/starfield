@@ -74,6 +74,48 @@ impl Body {
         }
     }
 
+    /// The body's entry in the embedded IAU WGCCRE 2015 table.
+    ///
+    /// Every variant of this enum is covered by the table, so the lookup
+    /// cannot fail.
+    fn constants(&self) -> &'static crate::planetarylib::BodyConstants {
+        crate::planetarylib::body_constants(self.naif_id())
+            .expect("every Body is present in the embedded IAU 2015 table")
+    }
+
+    /// The triaxial ellipsoid radii in km: two equatorial, then polar.
+    ///
+    /// Values are the IAU WGCCRE 2015 ones embedded in
+    /// [`planetarylib`](crate::planetarylib); load a text PCK kernel with
+    /// [`Loader::open_text_pck`](crate::Loader::open_text_pck) to override
+    /// them.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use starfield::planetlib::Body;
+    /// assert_eq!(Body::Mars.radii_km(), [3396.19, 3396.19, 3376.20]);
+    /// ```
+    pub fn radii_km(&self) -> [f64; 3] {
+        self.constants().radii
+    }
+
+    /// The mean radius in km: the arithmetic mean of the three ellipsoid axes.
+    pub fn mean_radius_km(&self) -> f64 {
+        self.constants().mean_radius_km()
+    }
+
+    /// The flattening `(a − c) / a` of the reference ellipsoid, zero for a
+    /// sphere.
+    pub fn flattening(&self) -> f64 {
+        self.constants().flattening()
+    }
+
+    /// The body's pole, prime meridian and nutation/precession terms.
+    pub fn rotational_elements(&self) -> &'static crate::planetarylib::RotationalElements {
+        &self.constants().elements
+    }
+
     /// Get the SPICE name used for kernel lookups
     fn spice_name(&self) -> &'static str {
         match self {
