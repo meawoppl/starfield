@@ -3,6 +3,13 @@
 //! Implements the Mallama & Hilton (2018) formulas for computing apparent
 //! visual magnitudes of planets, matching Skyfield's `magnitudelib`.
 //!
+//! Supported bodies:
+//!
+//! | Body | NAIF ids | Source |
+//! |---|---|---|
+//! | Mercury … Neptune | `199`/`1` … `899`/`8` | Mallama & Hilton (2018) |
+//! | Moon | `301` | Allen's *Astrophysical Quantities* lunar phase curve |
+//!
 //! For bodies *without* an empirical Mallama-Hilton model — asteroids, TNOs,
 //! and hypothetical planets — see the [`small_body`] submodule, which builds
 //! the magnitude from physical first principles (mass-radius relation,
@@ -48,12 +55,14 @@ const URANUS_POLE: [f64; 3] = [-0.21199958, -0.94155916, -0.26176809];
 /// magnitude. For other planets it is ignored but should still be provided.
 ///
 /// Returns `f64::NAN` for cases where the formula is undefined (e.g. Saturn
-/// at large phase angles, Neptune before 2000 at large phase angles).
+/// at large phase angles, Neptune before 2000 at large phase angles, the Moon
+/// beyond a phase angle of 150°).
 ///
 /// # Errors
 ///
 /// Returns an error if the target body is not a supported planet (Mercury
-/// through Neptune), or if the position lacks observer barycentric data.
+/// through Neptune) or the Moon, or if the position lacks observer barycentric
+/// data.
 pub fn planetary_magnitude(position: &Position, time: &Time) -> Result<f64, MagnitudeError> {
     let observer_bary = position
         .observer_barycentric
@@ -75,6 +84,7 @@ pub fn planetary_magnitude(position: &Position, time: &Time) -> Result<f64, Magn
     match target {
         199 | 1 => Ok(mercury_magnitude(r, delta, ph_ang)),
         299 | 2 => Ok(venus_magnitude(r, delta, ph_ang)),
+        301 => Ok(moon_magnitude(r, delta, ph_ang)),
         399 => Ok(earth_magnitude(r, delta, ph_ang)),
         499 | 4 => Ok(mars_magnitude(r, delta, ph_ang)),
         599 | 5 => Ok(jupiter_magnitude(r, delta, ph_ang)),
@@ -142,6 +152,40 @@ fn earth_magnitude(r: f64, delta: f64, ph_ang: f64) -> f64 {
     let distance_mag_factor = 5.0 * (r * delta).log10();
     let ph_ang_factor = -1.060e-03 * ph_ang + 2.054e-04 * ph_ang.powi(2);
     -3.99 + distance_mag_factor + ph_ang_factor
+}
+
+/// Highest phase angle at which the lunar phase curve is used, in degrees.
+const MOON_PHASE_ANGLE_LIMIT: f64 = 150.0;
+
+/// Apparent visual magnitude of the Moon.
+///
+/// `r_au` is the Sun-Moon distance, `delta_au` the observer-Moon distance,
+/// and `ph_ang_deg` the phase angle (Sun-Moon-observer) in degrees.
+///
+/// Uses the disk-integrated lunar phase curve of Allen, C. W.,
+/// *Astrophysical Quantities* (3rd ed., 1976; reproduced in Cox, ed.,
+/// *Allen's Astrophysical Quantities*, 4th ed., 2000):
+///
+/// ```text
+/// V = V(1,0) + 5 log10(r Δ) + 0.026 α + 4×10⁻⁹ α⁴
+/// ```
+///
+/// with `V(1,0) = +0.21`. At a mean full moon (α ≈ 0°, r ≈ 1 AU,
+/// Δ ≈ 0.00257 AU) this gives V ≈ −12.7, and at first quarter (α ≈ 90°)
+/// V ≈ −10.1.
+///
+/// Valid for phase angles 0° ≤ α ≤ 150°; beyond that the quartic term is
+/// unconstrained by the photometry it was fitted to and the function returns
+/// `f64::NAN`. The curve is a single-branch fit, so it does not reproduce the
+/// roughly 0.1 mag asymmetry between waxing and waning phases, nor the narrow
+/// opposition surge within about a degree of α = 0.
+pub fn moon_magnitude(r_au: f64, delta_au: f64, ph_ang_deg: f64) -> f64 {
+    if ph_ang_deg > MOON_PHASE_ANGLE_LIMIT {
+        return f64::NAN;
+    }
+    let distance_mag_factor = 5.0 * (r_au * delta_au).log10();
+    let ph_ang_factor = 0.026 * ph_ang_deg + 4.0e-9 * ph_ang_deg.powi(4);
+    0.21 + distance_mag_factor + ph_ang_factor
 }
 
 /// Mars magnitude (Mallama & Hilton 2018, Eqs. 5-6)
@@ -371,9 +415,61 @@ mod tests {
         let t = ts.tdb_jd(2451545.0);
 
         let earth = kernel.at("earth", &t).unwrap();
-        let moon = earth.observe("moon", &mut kernel, &t).unwrap();
-        let result = planetary_magnitude(&moon, &t);
+        let pluto = earth.observe("pluto barycenter", &mut kernel, &t).unwrap();
+        let result = planetary_magnitude(&pluto, &t);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_moon_magnitude_full() {
+        // Mean full moon: alpha ~ 0-5 deg, r ~ 1 AU, delta ~ 0.00257 AU
+        for ph_ang in [0.0, 5.0] {
+            let mag = moon_magnitude(1.0, 0.00257, ph_ang);
+            assert!(
+                (mag + 12.7).abs() < 0.1,
+                "Full moon magnitude should be ~-12.7 at alpha={ph_ang}, got {mag}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_moon_magnitude_first_quarter() {
+        let mag = moon_magnitude(1.0, 0.00257, 90.0);
+        assert!(
+            (mag + 10.0).abs() < 0.2,
+            "First quarter magnitude should be ~-10.0, got {mag}"
+        );
+    }
+
+    #[test]
+    fn test_moon_magnitude_fades_with_phase() {
+        let mut previous = f64::NEG_INFINITY;
+        for ph_ang in [0.0, 30.0, 60.0, 90.0, 120.0, 150.0] {
+            let mag = moon_magnitude(1.0, 0.00257, ph_ang);
+            assert!(mag > previous, "magnitude should grow with phase angle");
+            previous = mag;
+        }
+    }
+
+    #[test]
+    fn test_moon_magnitude_nan_beyond_limit() {
+        assert!(moon_magnitude(1.0, 0.00257, 160.0).is_nan());
+    }
+
+    #[test]
+    fn test_planetary_magnitude_moon() {
+        let mut kernel = de421_kernel();
+        let ts = Timescale::default();
+        let t = ts.tdb_jd(2451545.0); // J2000
+
+        let earth = kernel.at("earth", &t).unwrap();
+        let moon = earth.observe("moon", &mut kernel, &t).unwrap();
+        let mag = planetary_magnitude(&moon, &t).unwrap();
+
+        assert!(
+            mag > -12.8 && mag < -3.0,
+            "Moon magnitude should lie between full and thin crescent, got {mag}"
+        );
     }
 
     #[test]
