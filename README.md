@@ -9,6 +9,7 @@ Astronomical data reduction toolkit with star catalogs, coordinate systems, and 
 - Precession, nutation, and earth rotation calculations
 - Time and date handling for astronomical applications
 - Planetary constants: NAIF text kernel parsing plus an embedded IAU 2015 table of radii and rotational elements
+- Body-fixed reference frames from the IAU rotational elements, matching SPICE `IAU_MARS`, `IAU_MOON` and the rest
 - Synthetic catalog generation for testing
 - Python interoperability for comparing results with Skyfield (optional)
 

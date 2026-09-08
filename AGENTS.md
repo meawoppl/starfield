@@ -90,7 +90,8 @@ For NumPy arrays, use `rust.collect_array(np_array)` — the bridge preserves dt
 ### Environment Setup
 
 - Python 3.10.8 managed via pyenv (see `.python-version`)
-- Virtual environment "starfield" with `skyfield` (see `.skyfield-version`) and `astropy` (see `.astropy-version`). The bridge is library-agnostic — any package installed in the venv is reachable from `bridge.run_py_to_json(...)`.
+- Virtual environment "starfield" with `skyfield` (see `.skyfield-version`), `astropy` (see `.astropy-version`) and `spiceypy` (see `.spiceypy-version`). The bridge is library-agnostic — any package installed in the venv is reachable from `bridge.run_py_to_json(...)`.
+- `spiceypy` is the reference for the IAU body-fixed frames: nothing else in the environment evaluates the WGCCRE polynomial elements, so `planetarylib::IauFrame` is checked against `spiceypy.pxform` and `spiceypy.sxform`. Those tests need generic kernels off the network (`pck00011.tpc` and the leapsecond kernel `naif0012.tls`, downloaded into `~/.cache/starfield/`) and are `#[ignore]`d; the matrices they produce are checked in as golden constants so CI runs the same comparison offline. Run them with `cargo test --features python-tests -- --ignored --test-threads=1` — the embedded interpreter is not safe to drive from several test threads at once.
 - `devops/setup_pyenv.sh` — installs pyenv, creates venv, installs dependencies, generates `.env.python`
 - `devops/verify_pyenv.sh` — validates the Python environment is correctly configured
 - `.env` and `.env.python` — set `PYO3_PYTHON`, `PYTHONPATH`, `LD_LIBRARY_PATH` for PyO3
@@ -99,7 +100,7 @@ For NumPy arrays, use `rust.collect_array(np_array)` — the bridge preserves dt
 
 GitHub Actions (`.github/workflows/ci.yml`) runs two separate jobs:
 1. **`test`** — standard `cargo fmt`, `cargo clippy`, `cargo test`
-2. **`python-comparison`** — sets up Python 3.10 + Skyfield, then runs `cargo test --features python-tests`
+2. **`python-comparison`** — sets up Python 3.10 with Skyfield, AstroPy and SpiceyPy, then runs `cargo test --features python-tests`
 
 ### Reference Source
 

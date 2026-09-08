@@ -61,6 +61,23 @@ if [[ "$SKYFIELD_VERSION" != "$EXPECTED_SKYFIELD_VERSION" ]]; then
     exit 1
 fi
 
+# Check if spiceypy is installed
+if ! python -c "import spiceypy" &> /dev/null; then
+    echo -e "${RED}${CROSS} SpiceyPy is not installed${NC}"
+    exit 1
+fi
+
+# Check spiceypy version
+SPICEYPY_VERSION=$(python -c "import spiceypy; print(spiceypy.__version__)")
+EXPECTED_SPICEYPY_VERSION=$(cat "$(dirname "$0")/../.spiceypy-version")
+
+echo -e "${GREEN}${CHECK} SpiceyPy installed: v$SPICEYPY_VERSION${NC}"
+
+if [[ "$SPICEYPY_VERSION" != "$EXPECTED_SPICEYPY_VERSION" ]]; then
+    echo -e "${RED}${CROSS} SpiceyPy version mismatch: found v$SPICEYPY_VERSION, expected v$EXPECTED_SPICEYPY_VERSION${NC}"
+    exit 1
+fi
+
 # Check if pytest is installed
 if python -c "import pytest" &> /dev/null; then
     PYTEST_VERSION=$(python -c "import pytest; print(pytest.__version__)")

@@ -28,7 +28,10 @@
 //! ```
 //!
 //! Evaluating the elements at a given time — turning them into a rotation
-//! matrix — is the job of the body-fixed frames, which land separately.
+//! matrix — is the job of the body-fixed frames: [`iau_frame`] evaluates the
+//! IAU elements, [`pck_frame`] reads binary orientation kernels, and
+//! [`PlanetaryConstants::frame_for`] picks the best frame available for a
+//! given body.
 //!
 //! # Example: the lunar principal-axes frame
 //!
@@ -45,6 +48,7 @@
 //! println!("{}", frame.rotation_at(&ts.tdb_jd(2451545.0)));
 //! ```
 
+pub mod iau_frame;
 pub mod pck_frame;
 #[cfg(all(test, feature = "python-tests"))]
 mod python_tests;
@@ -56,10 +60,12 @@ use std::sync::{Arc, LazyLock};
 
 use nalgebra::Matrix3;
 
+pub use iau_frame::IauFrame;
 pub use pck_frame::PckFrame;
 pub use text_pck::KernelValue;
 
 use crate::constants::ASEC2RAD;
+use crate::framelib::{Frame, ItrsFrame};
 use crate::jplephem::pck::{PckSegment, PCK};
 use crate::{Result, StarfieldError};
 
@@ -252,6 +258,9 @@ fn coefficients(values: &[f64]) -> Option<[f64; 3]> {
     out[..values.len()].copy_from_slice(values);
     Some(out)
 }
+
+/// The NAIF code of the Earth, the one body served by a frame of its own.
+const EARTH: i32 = 399;
 
 /// The magic numbers that open a NAIF text kernel.
 const TEXT_MAGIC_NUMBERS: [&str; 2] = ["KPL/FK", "KPL/PCK"];
@@ -558,6 +567,46 @@ impl PlanetaryConstants {
             nut_prec_angles,
             nut_prec_angle_accel,
         })
+    }
+
+    /// The body-fixed frame of a body, choosing the best available source.
+    ///
+    /// The Earth gets [`ItrsFrame`], whose IERS-grade rotation is orders of
+    /// magnitude better than the IAU polynomials — those are about 0.06° out
+    /// at present — while every other body gets an [`IauFrame`] built from the
+    /// kernels read so far. This is the one place the choice is made, so
+    /// callers need not know the rule.
+    ///
+    /// Once binary PCK support lands, a body with a loaded high-accuracy
+    /// segment — the Moon with a `moon_pa_*.bpc` kernel, say — will be served
+    /// from that segment instead, and only this method will change.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StarfieldError::DataError`] if the kernels read so far define
+    /// no rotational elements for `body`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use starfield::planetarylib::PlanetaryConstants;
+    ///
+    /// let mut pc = PlanetaryConstants::new();
+    /// pc.read_text(concat!(
+    ///     "KPL/PCK\n\\begindata\n",
+    ///     "BODY499_POLE_RA = ( 317.269202 -0.10927547 0.0 )\n",
+    ///     "BODY499_POLE_DEC = ( 54.432516 -0.05827105 0.0 )\n",
+    ///     "BODY499_PM = ( 176.049863 350.891982443297 0.0 )\n",
+    ///     "\\begintext\n",
+    /// )).unwrap();
+    /// assert!(pc.frame_for(499).is_ok());
+    /// assert!(pc.frame_for(599).is_err());
+    /// ```
+    pub fn frame_for(&self, body: i32) -> Result<Box<dyn Frame>> {
+        if body == EARTH {
+            return Ok(Box::new(ItrsFrame));
+        }
+        Ok(Box::new(IauFrame::new(body, self)?))
     }
 
     /// A variable read as a polynomial of up to three terms.

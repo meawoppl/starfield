@@ -51,7 +51,8 @@ src/jplephem/pck.rs           binary PCK (DAF) — port of jplephem/pck.py      
 src/planetarylib/mod.rs       PlanetaryConstants, RotationalElements, BodyConstants
 src/planetarylib/text_pck.rs  text kernel parser — port of skyfield/data/text_pck.py (#157)
 src/planetarylib/iau2015.csv  embedded WGCCRE 2015 table                          (#160)
-src/planetarylib/frames.rs    IauFrame, PckFrame — impl framelib::Frame            (#158, #159)
+src/planetarylib/iau_frame.rs IauFrame — impl framelib::Frame                     (#159)
+src/planetarylib/pck_frame.rs PckFrame — impl framelib::Frame                     (#158)
 src/planetarylib/geometry.rs  sub-points, position angles, apparent ellipse        (#163–#165)
 src/planetarylib/occult.rs    occultation predicate                                (#170)
 ```
