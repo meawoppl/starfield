@@ -24,6 +24,7 @@
 //!
 //! - [`daf`] - Double Array File format reader (underlying binary container)
 //! - [`spk`] - Spacecraft Planet Kernel format reader
+//! - [`pck`] - Binary Planetary Constants Kernel format reader
 //! - [`kernel`] - High-level SpiceKernel API with named body access
 //! - [`chebyshev`] - Chebyshev polynomial interpolation
 //! - [`spk_type21`] - SPK Type 21 Modified Difference Array interpolation
@@ -46,5 +47,5 @@ mod tests;
 pub use self::chebyshev::{normalize_time, rescale_derivative, ChebyshevPolynomial};
 pub use self::errors::JplephemError;
 pub use self::kernel::{PlanetState, SpiceKernel, AU_KM, S_PER_DAY};
-pub use self::pck::PCK;
+pub use self::pck::{PckSegment, PCK};
 pub use self::spk::SPK;

@@ -127,5 +127,22 @@ reads them and are pulled in with `include_str!`. The pattern, established by
   `src/planetarylib/pck00011_excerpt.tpc`) so a unit test can assert the table
   and the original agree. Do not check in whole kernels; excerpt them.
 
+## Kernel Fixtures and Golden Vectors
+
+`test_data/de421.bsp` is the only kernel checked into the repository. Do not
+add more; a test that needs another kernel follows the pattern established by
+`src/planetarylib/pck_frame.rs`:
+
+- Build the binary in memory instead of on disk when the test only exercises
+  parsing or interpolation. `src/jplephem/pck.rs` has a
+  `#[cfg(test)] pub(crate) mod test_support` that assembles a DAF/PCK file
+  around coefficients the test chooses, and other modules' tests import it.
+- When the real kernel is unavoidable, fetch it through `Loader` into
+  `~/.cache/starfield/` and mark the test `#[ignore]` with a reason naming the
+  file. CI does not download kernels.
+- Check the reference values in as `const` golden arrays next to the ignored
+  test, with a doc comment giving the Python that produced them, so the
+  agreement is still tested when the kernel is absent.
+
 ## Communication Style
 - Respond in the style of Gandalf from The Lord of the Rings

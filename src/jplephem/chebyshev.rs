@@ -134,6 +134,212 @@ pub fn rescale_derivative(deriv_normalized: f64, radius: f64) -> Result<f64> {
     Ok(deriv_normalized / radius)
 }
 
+/// A run of equally spaced Chebyshev records, the coefficient layout shared by
+/// SPK types 2 and 3 and by binary PCK type 2.
+///
+/// A segment of any of those types is an array of `n_records` fixed-size
+/// records followed by four trailing numbers: the epoch of the first record,
+/// the length of each record, the record size and the record count. Each
+/// record holds its own midpoint and radius (in TDB seconds since J2000) and
+/// then `component_count` blocks of `n_coeffs` Chebyshev coefficients: three
+/// position components for SPK type 2, position and velocity for type 3, and
+/// three Euler angles for binary PCK type 2.
+#[derive(Debug, Clone)]
+pub struct ChebyshevRecords {
+    init: f64,
+    intlen: f64,
+    record_size: usize,
+    n_records: usize,
+    n_coeffs: usize,
+    component_count: usize,
+    coefficients: Vec<f64>,
+}
+
+impl ChebyshevRecords {
+    /// Parse a segment array of the given number of components per record.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`JplephemError::InvalidFormat`] if the array is too short, if
+    /// the record size cannot hold at least one coefficient per component, or
+    /// if the record count and record size disagree with the array length.
+    pub fn load(array: &[f64], component_count: usize) -> Result<Self> {
+        if array.len() < 4 {
+            return Err(JplephemError::InvalidFormat(
+                "Segment data too small for a Chebyshev record array".to_string(),
+            ));
+        }
+
+        let n = array.len();
+        let init = array[n - 4];
+        let intlen = array[n - 3];
+        let record_size = array[n - 2] as usize;
+        let n_records = array[n - 1] as usize;
+
+        if record_size < 2 + component_count {
+            return Err(JplephemError::InvalidFormat(format!(
+                "Invalid record size for {component_count} components: {record_size}"
+            )));
+        }
+
+        let expected_size = n_records * record_size + 4;
+        if n != expected_size {
+            return Err(JplephemError::InvalidFormat(format!(
+                "Inconsistent array size: expected {expected_size}, got {n}"
+            )));
+        }
+
+        Ok(Self {
+            init,
+            intlen,
+            record_size,
+            n_records,
+            n_coeffs: (record_size - 2) / component_count,
+            component_count,
+            coefficients: array[0..n - 4].to_vec(),
+        })
+    }
+
+    /// Epoch of the start of the first record, in TDB seconds since J2000.
+    pub fn init(&self) -> f64 {
+        self.init
+    }
+
+    /// Length of each record, in seconds.
+    pub fn interval_length(&self) -> f64 {
+        self.intlen
+    }
+
+    /// Number of records in the segment.
+    pub fn len(&self) -> usize {
+        self.n_records
+    }
+
+    /// Whether the segment holds no records at all.
+    pub fn is_empty(&self) -> bool {
+        self.n_records == 0
+    }
+
+    /// Number of Chebyshev coefficients per component.
+    pub fn coefficient_count(&self) -> usize {
+        self.n_coeffs
+    }
+
+    /// Number of components stored in each record.
+    pub fn component_count(&self) -> usize {
+        self.component_count
+    }
+
+    /// Index of the record covering `et`, in TDB seconds since J2000.
+    ///
+    /// An epoch exactly at the end of the last record is clamped onto it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`JplephemError::OutOfRangeError`] if `et` falls outside the
+    /// span of the records.
+    pub fn record_index(&self, et: f64) -> Result<usize> {
+        let out_of_range = || JplephemError::OutOfRangeError {
+            jd: super::spk::seconds_to_jd(et),
+            start_jd: super::spk::seconds_to_jd(self.init),
+            end_jd: super::spk::seconds_to_jd(self.init + self.intlen * self.n_records as f64),
+        };
+
+        let elapsed = et - self.init;
+        if elapsed < 0.0 || self.n_records == 0 {
+            return Err(out_of_range());
+        }
+        let index = (elapsed / self.intlen).floor() as usize;
+        match index.cmp(&self.n_records) {
+            std::cmp::Ordering::Less => Ok(index),
+            std::cmp::Ordering::Equal => Ok(self.n_records - 1),
+            std::cmp::Ordering::Greater => Err(out_of_range()),
+        }
+    }
+
+    /// Borrow one record by index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`JplephemError::InvalidFormat`] if the index is past the end
+    /// of the coefficient array.
+    pub fn record(&self, index: usize) -> Result<ChebyshevRecord<'_>> {
+        let start = index * self.record_size;
+        if index >= self.n_records || start + self.record_size > self.coefficients.len() {
+            return Err(JplephemError::InvalidFormat(
+                "Record index out of bounds".to_string(),
+            ));
+        }
+        Ok(ChebyshevRecord {
+            midpoint: self.coefficients[start],
+            radius: self.coefficients[start + 1],
+            coefficients: &self.coefficients[start + 2..start + self.record_size],
+            n_coeffs: self.n_coeffs,
+            component_count: self.component_count,
+        })
+    }
+
+    /// Borrow the record covering `et`, in TDB seconds since J2000.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`record_index`](Self::record_index) and
+    /// [`record`](Self::record).
+    pub fn record_at(&self, et: f64) -> Result<ChebyshevRecord<'_>> {
+        self.record(self.record_index(et)?)
+    }
+}
+
+/// One record of a [`ChebyshevRecords`] array.
+#[derive(Debug, Clone, Copy)]
+pub struct ChebyshevRecord<'a> {
+    midpoint: f64,
+    radius: f64,
+    coefficients: &'a [f64],
+    n_coeffs: usize,
+    component_count: usize,
+}
+
+impl ChebyshevRecord<'_> {
+    /// Midpoint of the record, in TDB seconds since J2000.
+    pub fn midpoint(&self) -> f64 {
+        self.midpoint
+    }
+
+    /// Half-length of the record, in seconds.
+    pub fn radius(&self) -> f64 {
+        self.radius
+    }
+
+    /// The Chebyshev polynomial of component `index`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`JplephemError::InvalidFormat`] if the component does not
+    /// exist in this record.
+    pub fn polynomial(&self, index: usize) -> Result<ChebyshevPolynomial> {
+        if index >= self.component_count {
+            return Err(JplephemError::InvalidFormat(format!(
+                "Component {index} out of range for a record of {} components",
+                self.component_count
+            )));
+        }
+        let start = index * self.n_coeffs;
+        Ok(ChebyshevPolynomial::new(
+            self.coefficients[start..start + self.n_coeffs].to_vec(),
+        ))
+    }
+
+    /// Map `et`, in TDB seconds since J2000, onto the polynomial's `[-1, 1]`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`normalize_time`].
+    pub fn normalized_time(&self, et: f64) -> Result<f64> {
+        normalize_time(et, self.midpoint, self.radius)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

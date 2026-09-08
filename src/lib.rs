@@ -215,6 +215,29 @@ impl Loader {
         Ok(constants)
     }
 
+    /// Open a binary PCK kernel, downloading it if necessary.
+    ///
+    /// Binary PCK kernels are the `.bpc` files that hold the orientation of a
+    /// body-fixed frame, such as `moon_pa_de421_1900-2050.bpc`. The file is
+    /// looked up in `data_dir` (if set) or in `~/.cache/starfield/`, and
+    /// downloaded from NAIF when it is not there.
+    ///
+    /// Hand the result to
+    /// [`PlanetaryConstants::read_binary`](planetarylib::PlanetaryConstants::read_binary)
+    /// to build frames from it.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// let loader = starfield::Loader::new();
+    /// let pck = loader.open_binary_pck("moon_pa_de421_1900-2050.bpc").unwrap();
+    /// assert!(pck.segment_for(31006).is_some());
+    /// ```
+    pub fn open_binary_pck(&self, filename: &str) -> Result<jplephem::pck::PCK> {
+        let path = data::download_or_cache(filename, self.data_dir.as_deref())?;
+        Ok(jplephem::pck::PCK::open(path)?)
+    }
+
     /// Ensure a data file is available locally, downloading if needed.
     ///
     /// Returns the local path without opening or parsing the file.
