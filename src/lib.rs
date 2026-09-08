@@ -27,6 +27,7 @@ pub mod keplerlib;
 pub mod magnitudelib;
 pub mod nbodylib;
 pub mod nutationlib;
+pub mod planetarylib;
 pub mod planetlib;
 pub mod positions;
 pub mod precessionlib;
@@ -192,6 +193,26 @@ impl Loader {
     pub fn open_ephemeris(&self, filename: &str) -> Result<planetlib::Ephemeris> {
         let kernel = self.open(filename)?;
         Ok(planetlib::Ephemeris::from_kernel(kernel))
+    }
+
+    /// Open a NAIF text kernel and return the constants it assigns.
+    ///
+    /// Text kernels are the plain-text `.tpc` and `.tf` files, such as
+    /// `pck00011.tpc`. The file is looked up in `data_dir` (if set) or in
+    /// `~/.cache/starfield/`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// let loader = starfield::Loader::new();
+    /// let pc = loader.open_text_pck("pck00011.tpc").unwrap();
+    /// assert_eq!(pc.radii(499), Some([3396.19, 3396.19, 3376.20]));
+    /// ```
+    pub fn open_text_pck(&self, filename: &str) -> Result<planetarylib::PlanetaryConstants> {
+        let path = data::download_or_cache(filename, self.data_dir.as_deref())?;
+        let mut constants = planetarylib::PlanetaryConstants::new();
+        constants.open_text(path)?;
+        Ok(constants)
     }
 
     /// Ensure a data file is available locally, downloading if needed.

@@ -1,0 +1,494 @@
+KPL/PCK
+
+Excerpt of pck00011.tpc, the NAIF generic text planetary constants kernel
+(Nat Bachman, NAIF, 2022 December 27), retrieved from
+
+   https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc
+
+Every assignment below is copied verbatim from that kernel; only the
+surrounding commentary has been dropped, so the excerpt stays small enough
+to check in.  It carries the orientation and shape constants of the Sun,
+the eight planets, the Moon and Pluto, plus the barycentre-level nutation
+and precession angles those constants refer to.  Values follow the IAU
+WGCCRE 2015 report (Archinal et al. 2018, Celest. Mech. Dyn. Astr. 130:22,
+with the 2019 corrigendum, 131:61).
+
+
+Sun orientation
+
+        \begindata
+
+        BODY10_POLE_RA         = (  286.13       0.          0. )
+        BODY10_POLE_DEC        = (   63.87       0.          0. )
+        BODY10_PM              = (   84.176     14.18440     0. )
+        BODY10_LONG_AXIS       = (    0.                        )
+
+\begintext
+
+
+Sun radii
+
+\begindata
+
+        BODY10_RADII      = (  695700.  695700.  695700.  )
+
+\begintext
+
+
+Mercury orientation
+
+\begindata
+
+        BODY199_POLE_RA          = (  281.0103   -0.0328     0. )
+        BODY199_POLE_DEC         = (   61.4155   -0.0049     0. )
+        BODY199_PM               = (  329.5988    6.1385108  0. )
+
+        BODY199_LONG_AXIS        = (    0.                        )
+
+        BODY199_NUT_PREC_RA  = ( 0. 0. 0. 0. 0. )
+
+        BODY199_NUT_PREC_DEC = ( 0. 0. 0. 0. 0. )
+
+        BODY199_NUT_PREC_PM  = (    0.01067257
+                                   -0.00112309
+                                   -0.00011040
+                                   -0.00002539
+                                   -0.00000571  )
+
+\begintext
+
+
+Nutation/precession angles of barycentre 1 (Mercury)
+
+\begindata
+
+        BODY1_NUT_PREC_ANGLES  = ( 174.7910857  0.14947253587500003E+06
+                                   349.5821714  0.29894507175000006E+06
+                                   164.3732571  0.44841760762500006E+06
+                                   339.1643429  0.59789014350000012E+06
+                                   153.9554286  0.74736267937499995E+06 )
+
+\begintext
+
+
+Mercury radii
+
+\begindata
+
+        BODY199_RADII     = ( 2440.53  2440.53  2438.26 )
+
+\begintext
+
+
+Venus orientation
+
+\begindata
+
+        BODY299_POLE_RA          = (  272.76       0.          0. )
+        BODY299_POLE_DEC         = (   67.16       0.          0. )
+        BODY299_PM               = (  160.20      -1.4813688   0. )
+
+        BODY299_LONG_AXIS        = (    0.                        )
+
+\begintext
+
+
+Venus radii
+
+\begindata
+
+        BODY299_RADII     = ( 6051.8   6051.8   6051.8 )
+
+\begintext
+
+
+Earth orientation
+
+\begindata
+
+        BODY399_POLE_RA        = (    0.      -0.641         0. )
+        BODY399_POLE_DEC       = (   90.      -0.557         0. )
+        BODY399_PM             = (  190.147  360.9856235     0. )
+        BODY399_LONG_AXIS      = (    0.                        )
+
+\begintext
+
+
+Nutation/precession angles of barycentre 3 (Earth-Moon)
+
+\begindata
+
+        BODY3_NUT_PREC_ANGLES  = (  125.045         -1935.5364525000
+                                    250.089         -3871.0729050000
+                                    260.008        475263.3328725000
+                                    176.625        487269.6299850000
+                                    357.529         35999.0509575000
+                                    311.589        964468.4993100000
+                                    134.963        477198.8693250000
+                                    276.617         12006.3007650000
+                                     34.226         63863.5132425000
+                                     15.134         -5806.6093575000
+                                    119.743           131.8406400000
+                                    239.961          6003.1503825000
+                                     25.053        473327.7964200000 )
+
+\begintext
+
+
+Earth radii
+
+\begindata
+
+        BODY399_RADII     = ( 6378.1366   6378.1366   6356.7519 )
+
+\begintext
+
+
+Moon orientation
+
+\begindata
+
+        BODY301_POLE_RA      = (  269.9949        0.0031        0.      )
+        BODY301_POLE_DEC     = (   66.5392        0.0130        0.      )
+        BODY301_PM           = (   38.3213       13.17635815   -1.4D-12 )
+        BODY301_LONG_AXIS    = (    0.                                  )
+
+        BODY301_NUT_PREC_RA  = (   -3.8787   -0.1204   0.0700   -0.0172
+                                    0.0       0.0072   0.0       0.0
+                                    0.0      -0.0052   0.0       0.0
+                                    0.0043                              )
+
+        BODY301_NUT_PREC_DEC = (   1.5419     0.0239  -0.0278    0.0068
+                                   0.0       -0.0029   0.0009    0.0
+                                   0.0        0.0008   0.0       0.0
+                                  -0.0009                               )
+
+        BODY301_NUT_PREC_PM  = (   3.5610     0.1208  -0.0642    0.0158
+                                   0.0252    -0.0066  -0.0047   -0.0046
+                                   0.0028     0.0052   0.0040    0.0019
+                                  -0.0044                               )
+\begintext
+
+\begintext
+
+
+Moon radii
+
+\begindata
+
+        BODY301_RADII     = ( 1737.4   1737.4   1737.4 )
+
+\begintext
+
+
+Mars orientation
+
+\begindata
+
+        BODY499_POLE_RA          = (  317.269202  -0.10927547        0.  )
+        BODY499_POLE_DEC         = (   54.432516  -0.05827105        0.  )
+        BODY499_PM               = (  176.049863  +350.891982443297  0.  )
+
+        BODY499_NUT_PREC_RA      = (  0     0     0     0     0
+                                      0     0     0     0     0
+                                      0.000068
+                                      0.000238
+                                      0.000052
+                                      0.000009
+                                      0.419057                  )
+
+
+        BODY499_NUT_PREC_DEC     = (  0     0     0     0     0
+                                      0     0     0     0     0
+                                      0     0     0     0     0
+                                      0.000051
+                                      0.000141
+                                      0.000031
+                                      0.000005
+                                      1.591274                  )
+
+
+        BODY499_NUT_PREC_PM      = (  0     0     0     0     0
+                                      0     0     0     0     0
+                                      0     0     0     0     0
+                                      0     0     0     0     0
+                                      0.000145
+                                      0.000157
+                                      0.000040
+                                      0.000001
+                                      0.000001
+                                      0.584542                  )
+
+\begintext
+
+
+Quadratic nutation/precession angles of barycentre 4 (Mars)
+
+\begindata
+
+        BODY4_MAX_PHASE_DEGREE = 2
+
+        BODY4_NUT_PREC_ANGLES  = (
+
+            190.72646643      15917.10818695   0
+            21.46892470       31834.27934054   0
+            332.86082793      19139.89694742   0
+            394.93256437      38280.79631835   0
+            189.63271560   41215158.18420050   12.711923222
+
+            121.46893664        660.22803474   0
+            231.05028581        660.99123540   0
+            251.37314025       1320.50145245   0
+            217.98635955      38279.96125550   0
+            196.19729402      19139.83628608   0
+
+            198.991226        19139.4819985    0
+            226.292679        38280.8511281    0
+            249.663391        57420.7251593    0
+            266.183510        76560.6367950    0
+            79.398797             0.5042615    0
+
+            122.433576        19139.9407476    0
+            43.058401         38280.8753272    0
+            57.663379         57420.7517205    0
+            79.476401         76560.6495004    0
+            166.325722            0.5042615    0
+
+            129.071773        19140.0328244    0
+            36.352167         38281.0473591    0
+            56.668646         57420.9295360    0
+            67.364003         76560.2552215    0
+            104.792680        95700.4387578    0
+            95.391654             0.5042615    0 )
+
+\begintext
+
+
+Mars radii
+
+\begindata
+
+        BODY499_RADII       = ( 3396.19   3396.19   3376.20 )
+
+\begintext
+
+
+Jupiter orientation
+
+\begindata
+
+        BODY599_POLE_RA        = (   268.056595     -0.006499       0. )
+        BODY599_POLE_DEC       = (    64.495303      0.002413       0. )
+        BODY599_PM             = (   284.95        870.5360000      0. )
+        BODY599_LONG_AXIS      = (     0.                        )
+
+        BODY599_NUT_PREC_RA  = ( 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.  0.000117
+                                                                0.000938
+                                                                0.001432
+                                                                0.000030
+                                                                0.002150 )
+
+        BODY599_NUT_PREC_DEC = ( 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.  0.000050
+                                                                0.000404
+                                                                0.000617
+                                                               -0.000013
+                                                                0.000926 )
+
+        BODY599_NUT_PREC_PM  = ( 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.  0.0
+                                                                0.0
+                                                                0.0
+                                                                0.0
+                                                                0.0  )
+
+\begintext
+
+
+Nutation/precession angles of barycentre 5 (Jupiter)
+
+\begindata
+
+        BODY5_NUT_PREC_ANGLES  = (    73.32      91472.9
+                                      24.62      45137.2
+                                     283.90       4850.7
+                                     355.80       1191.3
+                                     119.90        262.1
+                                     229.80         64.3
+                                     352.25       2382.6
+                                     113.35       6070.0
+                                     146.64     182945.8
+                                      49.24      90274.4
+                                      99.360714   4850.4046
+                                     175.895369   1191.9605
+                                     300.323162    262.5475
+                                     114.012305   6070.2476
+                                      49.511251     64.3000  )
+
+\begintext
+
+
+Jupiter radii
+
+\begindata
+
+        BODY599_RADII     = ( 71492   71492   66854 )
+
+\begintext
+
+
+Saturn orientation
+
+\begindata
+
+        BODY699_POLE_RA        = (    40.589    -0.036      0.  )
+        BODY699_POLE_DEC       = (    83.537    -0.004      0.  )
+        BODY699_PM             = (    38.90    810.7939024  0.  )
+        BODY699_LONG_AXIS      = (     0.                       )
+
+\begintext
+
+
+Nutation/precession angles of barycentre 6 (Saturn)
+
+\begindata
+
+        BODY6_NUT_PREC_ANGLES  = (  353.32   75706.7
+                                     28.72   75706.7
+                                    177.40  -36505.5
+                                    300.00   -7225.9
+                                    316.45     506.2
+                                    345.20   -1016.3
+                                    706.64  151413.4
+                                     57.44  151413.4  )
+
+\begintext
+
+
+Saturn radii
+
+\begindata
+
+        BODY699_RADII     = ( 60268   60268   54364 )
+
+\begintext
+
+
+Uranus orientation
+
+\begindata
+
+        BODY799_POLE_RA        = (  257.311     0.         0.  )
+        BODY799_POLE_DEC       = (  -15.175     0.         0.  )
+        BODY799_PM             = (  203.81   -501.1600928  0.  )
+        BODY799_LONG_AXIS      = (    0.                       )
+
+\begintext
+
+
+Nutation/precession angles of barycentre 7 (Uranus)
+
+\begindata
+
+        BODY7_NUT_PREC_ANGLES  = (  115.75   54991.87
+                                    141.69   41887.66
+                                    135.03   29927.35
+                                     61.77   25733.59
+                                    249.32   24471.46
+                                     43.86   22278.41
+                                     77.66   20289.42
+                                    157.36   16652.76
+                                    101.81   12872.63
+                                    138.64    8061.81
+                                    102.23   -2024.22
+                                    316.41    2863.96
+                                    304.01     -51.94
+                                    308.71     -93.17
+                                    340.82     -75.32
+                                    259.14    -504.81
+                                    204.46   -4048.44
+                                    632.82    5727.92     )
+
+\begintext
+
+
+Uranus radii
+
+\begindata
+
+        BODY799_RADII     = ( 25559   25559   24973 )
+
+\begintext
+
+
+Neptune orientation
+
+\begindata
+
+           BODY899_POLE_RA        = (  299.36     0.         0. )
+           BODY899_POLE_DEC       = (   43.46     0.         0. )
+           BODY899_PM             = (  249.978  541.1397757  0. )
+           BODY899_LONG_AXIS      = (    0.                     )
+
+
+           BODY899_NUT_PREC_RA    = (  0.70 0. 0. 0. 0. 0. 0. 0. )
+           BODY899_NUT_PREC_DEC   = ( -0.51 0. 0. 0. 0. 0. 0. 0. )
+           BODY899_NUT_PREC_PM    = ( -0.48 0. 0. 0. 0. 0. 0. 0. )
+
+\begintext
+
+
+Nutation/precession angles of barycentre 8 (Neptune)
+
+\begindata
+
+              BODY8_NUT_PREC_ANGLES = (   357.85         52.316
+                                          323.92      62606.6
+                                          220.51      55064.2
+                                          354.27      46564.5
+                                           75.31      26109.4
+                                           35.36      14325.4
+                                          142.61       2824.6
+                                          177.85         52.316
+                                          647.840    125213.200
+                                          355.700       104.632
+                                          533.550       156.948
+                                          711.400       209.264
+                                          889.250       261.580
+                                         1067.100       313.896
+                                         1244.950       366.212
+                                         1422.800       418.528
+                                         1600.650       470.844   )
+
+\begintext
+
+
+Neptune radii
+
+\begindata
+
+        BODY899_RADII     = ( 24764   24764  24341 )
+
+\begintext
+
+
+Pluto orientation
+
+\begindata
+
+        BODY999_POLE_RA        = (  132.993   0.          0. )
+        BODY999_POLE_DEC       = (   -6.163   0.          0. )
+        BODY999_PM             = (  302.695   56.3625225  0. )
+        BODY999_LONG_AXIS      = (    0.                     )
+
+\begintext
+
+
+Pluto radii
+
+\begindata
+
+        BODY999_RADII     = ( 1188.3   1188.3   1188.3 )
+
+\begintext
+
+
+End of excerpt.
