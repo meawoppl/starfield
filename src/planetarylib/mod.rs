@@ -13,6 +13,10 @@
 //! Both produce the same [`RotationalElements`] type, so code can start with
 //! the embedded table and switch to a downloaded kernel without changing.
 //!
+//! [`PlanetaryConstants`] also holds the segments of binary PCK (`.bpc`)
+//! kernels, read with [`PlanetaryConstants::read_binary`], and turns them into
+//! the body-fixed frames of [`pck_frame`].
+//!
 //! # Example
 //!
 //! ```
@@ -25,17 +29,38 @@
 //!
 //! Evaluating the elements at a given time — turning them into a rotation
 //! matrix — is the job of the body-fixed frames, which land separately.
+//!
+//! # Example: the lunar principal-axes frame
+//!
+//! ```no_run
+//! use starfield::framelib::Frame;
+//! use starfield::Loader;
+//!
+//! let loader = Loader::new();
+//! let mut pc = loader.open_text_pck("moon_080317.tf").unwrap();
+//! pc.read_binary(loader.open_binary_pck("moon_pa_de421_1900-2050.bpc").unwrap());
+//!
+//! let frame = pc.build_frame_named("MOON_PA_DE421").unwrap();
+//! let ts = loader.timescale();
+//! println!("{}", frame.rotation_at(&ts.tdb_jd(2451545.0)));
+//! ```
 
+pub mod pck_frame;
 #[cfg(all(test, feature = "python-tests"))]
 mod python_tests;
 pub mod text_pck;
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
+use nalgebra::Matrix3;
+
+pub use pck_frame::PckFrame;
 pub use text_pck::KernelValue;
 
+use crate::constants::ASEC2RAD;
+use crate::jplephem::pck::{PckSegment, PCK};
 use crate::{Result, StarfieldError};
 
 /// The IAU WGCCRE shape and orientation constants of one body.
@@ -231,6 +256,15 @@ fn coefficients(values: &[f64]) -> Option<[f64; 3]> {
 /// The magic numbers that open a NAIF text kernel.
 const TEXT_MAGIC_NUMBERS: [&str; 2] = ["KPL/FK", "KPL/PCK"];
 
+/// The error for a kernel variable that a frame needs and no kernel defines.
+fn missing(name: &str) -> StarfieldError {
+    StarfieldError::DataError(format!(
+        "unknown planetary constant {:?}; read a text kernel that defines it, \
+         such as moon_080317.tf, or add it to the variables map by hand",
+        name
+    ))
+}
+
 /// The variables read from one or more NAIF text kernels.
 ///
 /// This mirrors Skyfield's `PlanetaryConstants`: text kernels are read into
@@ -251,6 +285,10 @@ const TEXT_MAGIC_NUMBERS: [&str; 2] = ["KPL/FK", "KPL/PCK"];
 pub struct PlanetaryConstants {
     /// Every name assigned by the kernels read so far.
     pub variables: HashMap<String, KernelValue>,
+    /// Every binary PCK segment read so far, in the order they were read.
+    segments: Vec<Arc<PckSegment>>,
+    /// The last segment read for each frame class id.
+    segment_map: HashMap<i32, Arc<PckSegment>>,
 }
 
 impl PlanetaryConstants {
@@ -289,6 +327,194 @@ impl PlanetaryConstants {
     pub fn open_text<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let text = std::fs::read_to_string(path)?;
         self.read_text(&text)
+    }
+
+    /// Take the segments of an already-opened binary PCK kernel.
+    ///
+    /// Binary PCK kernels are the `.bpc` files that say how a body is oriented
+    /// on a given date; each of their segments is filed here under its NAIF
+    /// frame class id, ready for [`build_frame`](Self::build_frame). A later
+    /// kernel covering the same frame replaces an earlier one, as it does in
+    /// Skyfield's `PlanetaryConstants.read_binary`.
+    pub fn read_binary(&mut self, pck: PCK) {
+        for segment in pck.into_segments() {
+            let segment = Arc::new(segment);
+            self.segment_map.insert(segment.body, Arc::clone(&segment));
+            self.segments.push(segment);
+        }
+    }
+
+    /// Read a binary PCK kernel from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StarfieldError::EphemerisError`] if the file cannot be read
+    /// or is not a DAF.
+    pub fn open_binary<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        self.read_binary(PCK::open(path)?);
+        Ok(())
+    }
+
+    /// Every binary PCK segment read so far, in the order they were read.
+    pub fn segments(&self) -> &[Arc<PckSegment>] {
+        &self.segments
+    }
+
+    /// Build the body-fixed frame that a kernel name stands for.
+    ///
+    /// The name is resolved through the `FRAME_<NAME>` variable of a text
+    /// kernel, so `moon_080317.tf` must have been read before
+    /// `build_frame_named("MOON_PA_DE421")` can work.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`build_frame`](Self::build_frame), and
+    /// [`StarfieldError::DataError`] if no text kernel defines the name.
+    pub fn build_frame_named(&self, name: &str) -> Result<PckFrame> {
+        let integer = self.frame_integer(&format!("FRAME_{}", name))?;
+        self.build_frame(integer)
+    }
+
+    /// Build the body-fixed frame of a NAIF frame class id.
+    ///
+    /// Well-known ids are 31006 for `MOON_PA_DE421`, 31008 for
+    /// `MOON_PA_DE440` and 3000 for `ITRF93`. When the id names a text-kernel
+    /// *TK frame* — one defined by a fixed offset from another frame, the way
+    /// `MOON_ME` is defined relative to `MOON_PA_DE421` — the offset is folded
+    /// into the frame and the search moves on to the frame it is relative to.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StarfieldError::DataError`] if the variables that define the
+    /// frame are missing or malformed, and
+    /// [`StarfieldError::ObjectNotFound`] if no binary PCK segment has been
+    /// read for the frame.
+    pub fn build_frame(&self, integer: i32) -> Result<PckFrame> {
+        let center = self.frame_integer(&format!("FRAME_{}_CENTER", integer))?;
+
+        let mut frame_id = integer;
+        let mut matrix = None;
+
+        if let Some(spec) = self
+            .variables
+            .get(&format!("TKFRAME_{}_SPEC", integer))
+            .and_then(|v| v.as_string())
+        {
+            matrix = Some(self.tkframe_matrix(integer, spec)?);
+            let relative = self
+                .variables
+                .get(&format!("TKFRAME_{}_RELATIVE", integer))
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| missing(&format!("TKFRAME_{}_RELATIVE", integer)))?
+                .to_string();
+            frame_id = self.frame_integer(&format!("FRAME_{}", relative))?;
+        }
+
+        let segment = self.segment_map.get(&frame_id).ok_or_else(|| {
+            StarfieldError::ObjectNotFound(format!(
+                "no binary PCK segment has been read for frame {}",
+                frame_id
+            ))
+        })?;
+
+        // Every binary PCK NAIF publishes gives its angles relative to J2000,
+        // and that is the only reference frame the rotation below assumes.
+        if segment.frame != 1 {
+            return Err(StarfieldError::DataError(format!(
+                "frame {} is defined relative to reference frame {}, but only \
+                 J2000 (1) is supported",
+                frame_id, segment.frame
+            )));
+        }
+
+        Ok(PckFrame::new(center, Arc::clone(segment), matrix))
+    }
+
+    /// The fixed rotation of a text-kernel TK frame.
+    ///
+    /// Handles the two specifications Skyfield handles: `ANGLES`, a sequence
+    /// of rotations about numbered axes, and `MATRIX`, nine numbers in row
+    /// order.
+    fn tkframe_matrix(&self, integer: i32, spec: &str) -> Result<Matrix3<f64>> {
+        match spec {
+            "ANGLES" => {
+                let angles = self.required_numbers(&format!("TKFRAME_{}_ANGLES", integer))?;
+                let axes = self.required_numbers(&format!("TKFRAME_{}_AXES", integer))?;
+                let units = self
+                    .variables
+                    .get(&format!("TKFRAME_{}_UNITS", integer))
+                    .and_then(|v| v.as_string())
+                    .ok_or_else(|| missing(&format!("TKFRAME_{}_UNITS", integer)))?;
+                let scale = match units {
+                    "ARCSECONDS" => ASEC2RAD,
+                    other => {
+                        return Err(StarfieldError::DataError(format!(
+                            "TKFRAME_{}_UNITS is {:?}, which is not supported",
+                            integer, other
+                        )))
+                    }
+                };
+
+                if angles.len() != axes.len() {
+                    return Err(StarfieldError::DataError(format!(
+                        "TKFRAME_{} has {} angles but {} axes",
+                        integer,
+                        angles.len(),
+                        axes.len()
+                    )));
+                }
+
+                let mut matrix = Matrix3::identity();
+                for (angle, axis) in angles.iter().zip(axes.iter()) {
+                    let rotation = match *axis as i32 {
+                        1 => pck_frame::rot_x,
+                        2 => pck_frame::rot_y,
+                        3 => pck_frame::rot_z,
+                        other => {
+                            return Err(StarfieldError::DataError(format!(
+                                "TKFRAME_{}_AXES names axis {}, which is not 1, 2 or 3",
+                                integer, other
+                            )))
+                        }
+                    };
+                    matrix = rotation(angle * scale) * matrix;
+                }
+                Ok(matrix)
+            }
+            "MATRIX" => {
+                let values = self.required_numbers(&format!("TKFRAME_{}_MATRIX", integer))?;
+                if values.len() != 9 {
+                    return Err(StarfieldError::DataError(format!(
+                        "TKFRAME_{}_MATRIX has {} values, not 9",
+                        integer,
+                        values.len()
+                    )));
+                }
+                Ok(Matrix3::from_row_slice(&values))
+            }
+            other => Err(StarfieldError::DataError(format!(
+                "TKFRAME_{}_SPEC is {:?}, which is not supported",
+                integer, other
+            ))),
+        }
+    }
+
+    /// A variable that must exist and must be a single integer.
+    fn frame_integer(&self, name: &str) -> Result<i32> {
+        let value = self
+            .variables
+            .get(name)
+            .and_then(|v| v.as_number())
+            .ok_or_else(|| missing(name))?;
+        Ok(value as i32)
+    }
+
+    /// A variable that must exist and must be numeric.
+    fn required_numbers(&self, name: &str) -> Result<Vec<f64>> {
+        self.variables
+            .get(name)
+            .and_then(|v| v.to_numbers())
+            .ok_or_else(|| missing(name))
     }
 
     /// Look up one kernel variable by name.

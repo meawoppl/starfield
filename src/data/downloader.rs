@@ -30,6 +30,14 @@ const NAIF_SATELLITES_URL: &str =
 /// e.g. `moon_pa_de440_200625.bpc` and `earth_latest_high_prec.bpc`).
 pub const NAIF_PCK_URL: &str = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/";
 
+/// Base URL for NAIF satellite frame kernels
+///
+/// Holds the text frame kernels (`.tf`) that name the body-fixed frames a
+/// binary PCK orients, such as `moon_080317.tf`, which defines
+/// `MOON_PA_DE421` and `MOON_ME`.
+pub const NAIF_FK_SATELLITES_URL: &str =
+    "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/fk/satellites/";
+
 /// Get the cache directory path
 pub fn get_cache_dir() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -173,6 +181,7 @@ fn decompress_gzip<P: AsRef<Path>, Q: AsRef<Path>>(gz_path: P, output_path: Q) -
 /// - `*.bsp` — SPK ephemerides, from JPL, or from the NAIF satellite
 ///   directory when the name starts with `jup`
 /// - `*.tpc`, `*.bpc` — text and binary PCK kernels, from [`NAIF_PCK_URL`]
+/// - `*.tf` — text frame kernels, from [`NAIF_FK_SATELLITES_URL`]
 pub fn resolve_url(filename: &str) -> Option<String> {
     if filename.contains("://") {
         return Some(filename.to_string());
@@ -189,6 +198,10 @@ pub fn resolve_url(filename: &str) -> Option<String> {
 
     if filename.ends_with(".tpc") || filename.ends_with(".bpc") {
         return Some(format!("{}{}", NAIF_PCK_URL, filename));
+    }
+
+    if filename.ends_with(".tf") {
+        return Some(format!("{}{}", NAIF_FK_SATELLITES_URL, filename));
     }
 
     None
@@ -399,6 +412,17 @@ mod tests {
             resolve_url("moon_pa_de440_200625.bpc"),
             Some(
                 "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/moon_pa_de440_200625.bpc"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_resolve_url_frame_kernel() {
+        assert_eq!(
+            resolve_url("moon_080317.tf"),
+            Some(
+                "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/fk/satellites/moon_080317.tf"
                     .to_string()
             )
         );

@@ -11,21 +11,11 @@ use std::sync::Arc;
 use nalgebra::Vector3;
 
 use super::calendar::calendar_date_from_float;
-use super::chebyshev::{normalize_time, rescale_derivative, ChebyshevPolynomial};
+use super::chebyshev::{rescale_derivative, ChebyshevRecords};
 use super::daf::DAF;
 use super::errors::{JplephemError, Result};
 use super::names::get_target_name;
 use super::spk_type21::Type21Data;
-
-/// Type 2 record coefficients: (midpoint, radius, x_coeffs, y_coeffs, z_coeffs)
-type Type2Coeffs = (f64, f64, Vec<f64>, Vec<f64>, Vec<f64>);
-/// Type 3 record coefficients: (midpoint, radius, (pos_xyz), (vel_xyz))
-type Type3Coeffs = (
-    f64,
-    f64,
-    (Vec<f64>, Vec<f64>, Vec<f64>),
-    (Vec<f64>, Vec<f64>, Vec<f64>),
-);
 
 /// J2000 epoch as Julian date
 const T0: f64 = 2451545.0;
@@ -86,12 +76,7 @@ pub struct Segment {
 enum SegmentData {
     /// Type 2/3 Chebyshev polynomial data
     Chebyshev {
-        init: f64,
-        intlen: f64,
-        coefficients: Vec<f64>,
-        /// (n_records, n_components, n_coeffs_per_component)
-        shape: (usize, usize, usize),
-        record_size: usize,
+        records: ChebyshevRecords,
         data_type: i32,
     },
     /// Type 21 Modified Difference Array data
@@ -234,75 +219,36 @@ impl Segment {
         let data = self.load_data()?;
 
         match data {
-            SegmentData::Chebyshev {
-                init,
-                intlen,
-                coefficients,
-                shape,
-                record_size,
-                data_type,
-            } => {
-                let record_index = Self::find_record_index(et, *init, *intlen, shape.0)?;
+            SegmentData::Chebyshev { records, data_type } => {
+                let record = records.record_at(et)?;
+                let t = record.normalized_time(et)?;
+                let radius = record.radius();
 
                 match data_type {
                     2 => {
-                        let (record_mid, record_radius, coeffs_x, coeffs_y, coeffs_z) =
-                            Self::get_record_coefficients_type2(
-                                coefficients,
-                                record_index,
-                                *record_size,
-                                shape.2,
-                            )?;
+                        let x = record.polynomial(0)?;
+                        let y = record.polynomial(1)?;
+                        let z = record.polynomial(2)?;
 
-                        let t = normalize_time(et, record_mid, record_radius)?;
-
-                        let poly_x = ChebyshevPolynomial::new(coeffs_x);
-                        let poly_y = ChebyshevPolynomial::new(coeffs_y);
-                        let poly_z = ChebyshevPolynomial::new(coeffs_z);
-
-                        let position = Vector3::new(
-                            poly_x.evaluate(t),
-                            poly_y.evaluate(t),
-                            poly_z.evaluate(t),
-                        );
-
+                        let position = Vector3::new(x.evaluate(t), y.evaluate(t), z.evaluate(t));
                         let velocity = Vector3::new(
-                            rescale_derivative(poly_x.derivative(t), record_radius)?,
-                            rescale_derivative(poly_y.derivative(t), record_radius)?,
-                            rescale_derivative(poly_z.derivative(t), record_radius)?,
+                            rescale_derivative(x.derivative(t), radius)?,
+                            rescale_derivative(y.derivative(t), radius)?,
+                            rescale_derivative(z.derivative(t), radius)?,
                         );
 
                         Ok((position, velocity))
                     }
                     3 => {
-                        let (record_mid, record_radius, pos_coeffs, vel_coeffs) =
-                            Self::get_record_coefficients_type3(
-                                coefficients,
-                                record_index,
-                                *record_size,
-                                shape.2,
-                            )?;
-
-                        let t = normalize_time(et, record_mid, record_radius)?;
-
-                        let poly_x = ChebyshevPolynomial::new(pos_coeffs.0);
-                        let poly_y = ChebyshevPolynomial::new(pos_coeffs.1);
-                        let poly_z = ChebyshevPolynomial::new(pos_coeffs.2);
-
-                        let poly_vx = ChebyshevPolynomial::new(vel_coeffs.0);
-                        let poly_vy = ChebyshevPolynomial::new(vel_coeffs.1);
-                        let poly_vz = ChebyshevPolynomial::new(vel_coeffs.2);
-
                         let position = Vector3::new(
-                            poly_x.evaluate(t),
-                            poly_y.evaluate(t),
-                            poly_z.evaluate(t),
+                            record.polynomial(0)?.evaluate(t),
+                            record.polynomial(1)?.evaluate(t),
+                            record.polynomial(2)?.evaluate(t),
                         );
-
                         let velocity = Vector3::new(
-                            rescale_derivative(poly_vx.evaluate(t), record_radius)?,
-                            rescale_derivative(poly_vy.evaluate(t), record_radius)?,
-                            rescale_derivative(poly_vz.evaluate(t), record_radius)?,
+                            rescale_derivative(record.polynomial(3)?.evaluate(t), radius)?,
+                            rescale_derivative(record.polynomial(4)?.evaluate(t), radius)?,
+                            rescale_derivative(record.polynomial(5)?.evaluate(t), radius)?,
                         );
 
                         Ok((position, velocity))
@@ -312,95 +258,6 @@ impl Segment {
             }
             SegmentData::Type21(type21_data) => type21_data.compute(et),
         }
-    }
-
-    fn find_record_index(et: f64, init: f64, intlen: f64, n_records: usize) -> Result<usize> {
-        let elapsed = et - init;
-        if elapsed < 0.0 {
-            return Err(JplephemError::OutOfRangeError {
-                jd: seconds_to_jd(et),
-                start_jd: seconds_to_jd(init),
-                end_jd: seconds_to_jd(init + intlen * n_records as f64),
-            });
-        }
-        let mut index = (elapsed / intlen).floor() as usize;
-        // Clamp to last record for times at the exact end of the range
-        if index >= n_records {
-            if index == n_records {
-                index = n_records - 1;
-            } else {
-                return Err(JplephemError::OutOfRangeError {
-                    jd: seconds_to_jd(et),
-                    start_jd: seconds_to_jd(init),
-                    end_jd: seconds_to_jd(init + intlen * n_records as f64),
-                });
-            }
-        }
-        Ok(index)
-    }
-
-    fn get_record_coefficients_type2(
-        coefficients: &[f64],
-        record_index: usize,
-        record_size: usize,
-        n_coeffs: usize,
-    ) -> Result<Type2Coeffs> {
-        let record_start = record_index * record_size;
-        if record_start + 2 + 3 * n_coeffs > coefficients.len() {
-            return Err(JplephemError::InvalidFormat(
-                "Record index out of bounds".to_string(),
-            ));
-        }
-
-        let record_mid = coefficients[record_start];
-        let record_radius = coefficients[record_start + 1];
-
-        let x_start = record_start + 2;
-        let y_start = x_start + n_coeffs;
-        let z_start = y_start + n_coeffs;
-
-        let coeffs_x = coefficients[x_start..x_start + n_coeffs].to_vec();
-        let coeffs_y = coefficients[y_start..y_start + n_coeffs].to_vec();
-        let coeffs_z = coefficients[z_start..z_start + n_coeffs].to_vec();
-
-        Ok((record_mid, record_radius, coeffs_x, coeffs_y, coeffs_z))
-    }
-
-    fn get_record_coefficients_type3(
-        coefficients: &[f64],
-        record_index: usize,
-        record_size: usize,
-        n_coeffs: usize,
-    ) -> Result<Type3Coeffs> {
-        let record_start = record_index * record_size;
-        if record_start + 2 + 6 * n_coeffs > coefficients.len() {
-            return Err(JplephemError::InvalidFormat(
-                "Record index out of bounds".to_string(),
-            ));
-        }
-
-        let record_mid = coefficients[record_start];
-        let record_radius = coefficients[record_start + 1];
-
-        let x_start = record_start + 2;
-        let y_start = x_start + n_coeffs;
-        let z_start = y_start + n_coeffs;
-        let vx_start = z_start + n_coeffs;
-        let vy_start = vx_start + n_coeffs;
-        let vz_start = vy_start + n_coeffs;
-
-        let pos = (
-            coefficients[x_start..x_start + n_coeffs].to_vec(),
-            coefficients[y_start..y_start + n_coeffs].to_vec(),
-            coefficients[z_start..z_start + n_coeffs].to_vec(),
-        );
-        let vel = (
-            coefficients[vx_start..vx_start + n_coeffs].to_vec(),
-            coefficients[vy_start..vy_start + n_coeffs].to_vec(),
-            coefficients[vz_start..vz_start + n_coeffs].to_vec(),
-        );
-
-        Ok((record_mid, record_radius, pos, vel))
     }
 
     fn load_data(&mut self) -> Result<&SegmentData> {
@@ -423,84 +280,16 @@ impl Segment {
     }
 
     fn load_data_type_2(&mut self, array: &[f64]) -> Result<&SegmentData> {
-        if array.len() < 4 {
-            return Err(JplephemError::InvalidFormat(
-                "Segment data too small for Type 2".to_string(),
-            ));
-        }
-
-        let n = array.len();
-        let init = array[n - 4];
-        let intlen = array[n - 3];
-        let rsize = array[n - 2] as usize;
-        let n_rec = array[n - 1] as usize;
-
-        if rsize < 5 {
-            return Err(JplephemError::InvalidFormat(format!(
-                "Invalid record size for Type 2: {rsize}"
-            )));
-        }
-
-        let n_coeffs = (rsize - 2) / 3;
-
-        let expected_size = n_rec * rsize + 4;
-        if array.len() != expected_size {
-            return Err(JplephemError::InvalidFormat(format!(
-                "Inconsistent array size: expected {expected_size}, got {}",
-                array.len()
-            )));
-        }
-
-        let coefficients = array[0..(n - 4)].to_vec();
-
         self.data = Some(SegmentData::Chebyshev {
-            init,
-            intlen,
-            coefficients,
-            shape: (n_rec, 3, n_coeffs),
-            record_size: rsize,
+            records: ChebyshevRecords::load(array, 3)?,
             data_type: self.data_type,
         });
         Ok(self.data.as_ref().unwrap())
     }
 
     fn load_data_type_3(&mut self, array: &[f64]) -> Result<&SegmentData> {
-        if array.len() < 4 {
-            return Err(JplephemError::InvalidFormat(
-                "Segment data too small for Type 3".to_string(),
-            ));
-        }
-
-        let n = array.len();
-        let init = array[n - 4];
-        let intlen = array[n - 3];
-        let rsize = array[n - 2] as usize;
-        let n_rec = array[n - 1] as usize;
-
-        if rsize < 8 {
-            return Err(JplephemError::InvalidFormat(format!(
-                "Invalid record size for Type 3: {rsize}"
-            )));
-        }
-
-        let n_coeffs = (rsize - 2) / 6;
-
-        let expected_size = n_rec * rsize + 4;
-        if array.len() != expected_size {
-            return Err(JplephemError::InvalidFormat(format!(
-                "Inconsistent array size: expected {expected_size}, got {}",
-                array.len()
-            )));
-        }
-
-        let coefficients = array[0..(n - 4)].to_vec();
-
         self.data = Some(SegmentData::Chebyshev {
-            init,
-            intlen,
-            coefficients,
-            shape: (n_rec, 6, n_coeffs),
-            record_size: rsize,
+            records: ChebyshevRecords::load(array, 6)?,
             data_type: self.data_type,
         });
         Ok(self.data.as_ref().unwrap())
