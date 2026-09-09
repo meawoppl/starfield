@@ -263,6 +263,13 @@ fn coefficients(values: &[f64]) -> Option<[f64; 3]> {
 /// The NAIF code of the Earth, the one body served by a frame of its own.
 const EARTH: i32 = 399;
 
+/// The NAIF code of the Moon.
+const MOON: i32 = 301;
+
+/// The frame class ids of the lunar principal-axes frames, best first:
+/// `MOON_PA_DE440` then `MOON_PA_DE421`.
+const MOON_PA_FRAMES: [i32; 2] = [31008, 31006];
+
 /// The magic numbers that open a NAIF text kernel.
 const TEXT_MAGIC_NUMBERS: [&str; 2] = ["KPL/FK", "KPL/PCK"];
 
@@ -572,20 +579,31 @@ impl PlanetaryConstants {
 
     /// The body-fixed frame of a body, choosing the best available source.
     ///
-    /// The Earth gets [`ItrsFrame`], whose IERS-grade rotation is orders of
-    /// magnitude better than the IAU polynomials — those are about 0.06° out
-    /// at present — while every other body gets an [`IauFrame`] built from the
-    /// kernels read so far. This is the one place the choice is made, so
-    /// callers need not know the rule.
+    /// Three rules, and this is the one place they are applied, so callers
+    /// need not know them:
     ///
-    /// Once binary PCK support lands, a body with a loaded high-accuracy
-    /// segment — the Moon with a `moon_pa_*.bpc` kernel, say — will be served
-    /// from that segment instead, and only this method will change.
+    /// * the Earth gets [`ItrsFrame`], whose IERS-grade rotation is orders of
+    ///   magnitude better than the IAU polynomials — those are about 0.06° out
+    ///   at present;
+    /// * the Moon gets a [`PckFrame`] on its principal-axes frame when a
+    ///   binary PCK for one has been read — `MOON_PA_DE440` (frame class id
+    ///   31008) in preference to `MOON_PA_DE421` (31006) — because those come
+    ///   from the same fits as the ephemerides where the IAU elements are a
+    ///   truncated series;
+    /// * every other body, and the Moon without such a kernel, gets an
+    ///   [`IauFrame`] built from the kernels read so far.
+    ///
+    /// The lunar frame is taken straight from the segment, so no frame kernel
+    /// need be read for it; `moon_080317.tf` is needed only to reach the
+    /// frames by name through [`build_frame_named`](Self::build_frame_named)
+    /// or to fold in the `MOON_ME` offset.
     ///
     /// # Errors
     ///
     /// Returns [`StarfieldError::DataError`] if the kernels read so far define
-    /// no rotational elements for `body`.
+    /// no rotational elements for `body`, or if a lunar principal-axes segment
+    /// has been read that is relative to something other than J2000, which is
+    /// the only reference frame the rotation assumes.
     ///
     /// # Example
     ///
@@ -607,7 +625,32 @@ impl PlanetaryConstants {
         if body == EARTH {
             return Ok(Box::new(ItrsFrame));
         }
+        if body == MOON {
+            if let Some(frame) = self.moon_principal_axes()? {
+                return Ok(Box::new(frame));
+            }
+        }
         Ok(Box::new(IauFrame::new(body, self)?))
+    }
+
+    /// The lunar principal-axes frame of the best binary PCK read so far, or
+    /// `None` if none has been.
+    fn moon_principal_axes(&self) -> Result<Option<PckFrame>> {
+        for id in MOON_PA_FRAMES {
+            let Some(segment) = self.segment_map.get(&id) else {
+                continue;
+            };
+            if segment.frame != 1 {
+                return Err(StarfieldError::DataError(format!(
+                    "the lunar principal-axes segment for frame {} is defined \
+                     relative to reference frame {}, but only J2000 (1) is \
+                     supported",
+                    id, segment.frame
+                )));
+            }
+            return Ok(Some(PckFrame::new(MOON, Arc::clone(segment), None)));
+        }
+        Ok(None)
     }
 
     /// A variable read as a polynomial of up to three terms.
