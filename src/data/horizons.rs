@@ -566,6 +566,12 @@ pub struct EphemerisRequest {
     pub quantities: Option<String>,
     /// RA/Dec angle format: "HMS" or "DEG"
     pub ang_format: Option<String>,
+    /// Date column format of an observer table: "CAL", "JD" or "BOTH".
+    ///
+    /// HORIZONS defaults to "CAL", whose date strings
+    /// [`parser::parse_observer_rows`](crate::horizons::parser::parse_observer_rows)
+    /// cannot key rows by; set "JD" to get a Julian date in the first column.
+    pub cal_format: Option<String>,
     /// Enable CSV-format output
     pub csv_format: bool,
     /// Extra precision in RA/Dec
@@ -596,6 +602,7 @@ impl EphemerisRequest {
             ref_plane: Some(ReferencePlane::Ecliptic),
             quantities: None,
             ang_format: None,
+            cal_format: None,
             csv_format: true,
             extra_prec: false,
             ca_table_type: None,
@@ -619,6 +626,7 @@ impl EphemerisRequest {
             ref_plane: None,
             quantities: Some("1,9,20,23".to_string()),
             ang_format: Some("DEG".to_string()),
+            cal_format: None,
             csv_format: true,
             extra_prec: true,
             ca_table_type: None,
@@ -642,6 +650,7 @@ impl EphemerisRequest {
             ref_plane: Some(ReferencePlane::Ecliptic),
             quantities: None,
             ang_format: None,
+            cal_format: None,
             csv_format: true,
             extra_prec: false,
             ca_table_type: None,
@@ -668,6 +677,7 @@ impl EphemerisRequest {
             ref_plane: None,
             quantities: None,
             ang_format: None,
+            cal_format: None,
             csv_format: false,
             extra_prec: false,
             ca_table_type: Some(CaTableType::Standard),
@@ -698,6 +708,7 @@ impl EphemerisRequest {
             ref_plane: None,
             quantities: None,
             ang_format: None,
+            cal_format: None,
             csv_format: false,
             extra_prec: false,
             ca_table_type: None,
@@ -805,6 +816,10 @@ impl EphemerisRequest {
 
         if let Some(fmt) = &self.ang_format {
             params.push(("ANG_FORMAT".into(), format!("'{}'", fmt)));
+        }
+
+        if let Some(fmt) = &self.cal_format {
+            params.push(("CAL_FORMAT".into(), format!("'{}'", fmt)));
         }
 
         if self.csv_format {
