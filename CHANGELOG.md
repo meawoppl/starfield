@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0
+
+Foundation for resolved solar-system bodies (planets, Moon, limbs), built for the focalplane renderer; the plan and PR sequence live in `docs/solar-system-bodies-plan.md` (#171).
+
+- Add `planetarylib` — a port of Skyfield's `planetarylib`: text PCK/FK kernel parser (`text_pck`), `PlanetaryConstants`, `RotationalElements`, and an embedded, network-free IAU WGCCRE 2015 table (`iau2015.csv`) of radii, flattening and rotational elements exposed through `planetlib::Body::{radii_km, mean_radius_km, flattening, rotational_elements}`; `Loader::open_text_pck` (#175)
+- Add `jplephem::pck` binary PCK reader (DAF type-2 Euler-angle segments) replacing the stub; `PlanetaryConstants::{read_binary, build_frame, build_frame_named}` with TK-frame offsets; `planetarylib::PckFrame` (e.g. `MOON_PA_DE421`, matches Skyfield to 1e-9 rad); SPK types 2 and 3 now share a `chebyshev::ChebyshevRecords` loader; `Loader::open_binary_pck` (#176)
+- Add `planetarylib::IauFrame` — ICRF → IAU body-fixed rotation from the WGCCRE elements including nut-prec series and the Mars-system quadratic phase term; `RotationalElements::{evaluate, evaluate_with_rates}`; `PlanetaryConstants::frame_for`. Validated against SpiceyPy `pxform` to < 1e-5 arcsec for Mars, Earth, Moon and Jupiter (#177)
+- Add `framelib::ItrsFrame` — ICRF → ITRS through the existing precession/nutation/GAST/polar-motion chain (`Time::c_matrix`) (#172)
+- Add `magnitudelib::moon_magnitude` (Allen V phase curve); `planetary_magnitude` now supports body 301 (#174)
+- `data::resolve_url` resolves `.tpc`/`.bpc` to the NAIF generic PCK directory and `.tf` to `fk/satellites/` (#173, #176)
+- The Python comparison environment gains `spiceypy`, pinned in `.spiceypy-version` (#177)
+
 ## 0.14.0
 
 Five new modules extracted from the OrbitalCommons/planet9 research workspace, where they were built and hardened against published Planet Nine results. Zero new dependencies across all five.
