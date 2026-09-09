@@ -16,6 +16,7 @@ PYENV_ROOT="$HOME/.pyenv"
 PYTHON_VERSION=$(cat "$(dirname "$0")/../.python-version")
 SKYFIELD_VERSION=$(cat "$(dirname "$0")/../.skyfield-version")
 ASTROPY_VERSION=$(cat "$(dirname "$0")/../.astropy-version")
+SPICEYPY_VERSION=$(cat "$(dirname "$0")/../.spiceypy-version")
 
 echo "=== Setting up pyenv environment for Starfield ==="
 
@@ -83,6 +84,7 @@ echo "Installing required Python packages..."
 "$PYTHON_EXEC" -m pip install \
     "skyfield==${SKYFIELD_VERSION}" \
     "astropy==${ASTROPY_VERSION}" \
+    "spiceypy==${SPICEYPY_VERSION}" \
     scipy \
     pytest
 
@@ -107,4 +109,5 @@ echo ""
 echo "=== Python environment setup complete ==="
 echo ""
 echo "Python $PYTHON_VERSION is now the local interpreter for this directory,"
-echo "with skyfield $SKYFIELD_VERSION, astropy $ASTROPY_VERSION, and scipy installed."
+echo "with skyfield $SKYFIELD_VERSION, astropy $ASTROPY_VERSION, spiceypy $SPICEYPY_VERSION"
+echo "and scipy installed."
