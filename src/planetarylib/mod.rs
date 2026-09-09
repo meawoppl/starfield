@@ -51,6 +51,7 @@
 pub mod iau_frame;
 pub mod occult;
 pub mod pck_frame;
+pub mod position_angles;
 #[cfg(all(test, feature = "python-tests"))]
 mod python_tests;
 pub mod subpoint;
