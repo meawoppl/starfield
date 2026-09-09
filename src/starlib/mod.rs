@@ -148,7 +148,13 @@ impl Star {
         let distance = vector.norm();
         let light_time = distance / C_AUDAY;
 
-        Position::astrometric(vector, velocity, observer, -1, light_time)
+        Position::astrometric(
+            vector,
+            velocity,
+            observer,
+            crate::positions::stars::STAR_TARGET_ID,
+            light_time,
+        )
     }
 
     /// Compute the ICRS position and velocity vectors from catalog parameters.
