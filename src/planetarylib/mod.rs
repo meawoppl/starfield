@@ -53,6 +53,7 @@ pub mod occult;
 pub mod pck_frame;
 #[cfg(all(test, feature = "python-tests"))]
 mod python_tests;
+pub mod subpoint;
 pub mod text_pck;
 
 use std::collections::HashMap;

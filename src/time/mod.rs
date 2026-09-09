@@ -1222,6 +1222,25 @@ impl Time {
         self.whole + tdb_frac
     }
 
+    /// The same instant shifted by `days` days of TDB, on the same timescale.
+    ///
+    /// Light-time corrections need the epoch at the far end of the light path,
+    /// `t.shift_days(-light_time)`, and this keeps whatever ΔT, leap-second
+    /// and polar-motion tables the timescale carries, which
+    /// `Timescale::default().tdb_jd(..)` would silently drop.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use starfield::time::Timescale;
+    ///
+    /// let t = Timescale::default().tdb_jd(2451545.0);
+    /// assert_eq!(t.shift_days(-0.5).tdb(), 2451544.5);
+    /// ```
+    pub fn shift_days(&self, days: f64) -> Time {
+        self.ts.tdb_jd(self.tdb() + days)
+    }
+
     /// Calculate TDB - TT difference in seconds
     fn tdb_minus_tt(&self, jd_tdb: f64) -> f64 {
         // Implementation of USNO Circular 179, eq. 2.6
