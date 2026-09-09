@@ -22,6 +22,7 @@
 pub mod angular_size;
 pub mod ecliptic;
 pub mod illumination;
+pub mod spacecraft;
 pub mod stars;
 
 #[cfg(all(test, feature = "python-tests"))]
