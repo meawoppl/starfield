@@ -461,6 +461,7 @@ mod tests {
     ///
     /// This catches broken URLs in CI without streaming large files.
     #[test]
+    #[ignore = "makes live HEAD requests to JPL and NAIF"]
     fn test_known_endpoints_reachable() {
         let filenames = [
             "de421.bsp",

@@ -272,8 +272,13 @@ const MOON: i32 = 301;
 /// `MOON_PA_DE440` then `MOON_PA_DE421`.
 const MOON_PA_FRAMES: [i32; 2] = [31008, 31006];
 
-/// The magic numbers that open a NAIF text kernel.
-const TEXT_MAGIC_NUMBERS: [&str; 2] = ["KPL/FK", "KPL/PCK"];
+/// The magic numbers that open a NAIF text kernel: the first non-blank
+/// characters of a valid `.tpc` or `.tf` file.
+///
+/// [`read_text`](PlanetaryConstants::read_text) rejects input that does not
+/// start with one of these, so a download that returned an HTML error or login
+/// page is refused rather than parsed as an empty kernel.
+pub const TEXT_MAGIC_NUMBERS: [&str; 2] = ["KPL/FK", "KPL/PCK"];
 
 /// The error for a kernel variable that a frame needs and no kernel defines.
 fn missing(name: &str) -> StarfieldError {
@@ -593,7 +598,9 @@ impl PlanetaryConstants {
     ///   from the same fits as the ephemerides where the IAU elements are a
     ///   truncated series;
     /// * every other body, and the Moon without such a kernel, gets an
-    ///   [`IauFrame`] built from the kernels read so far.
+    ///   [`IauFrame`] built from the kernels read so far, or from the embedded
+    ///   IAU 2015 table when no kernel read so far defines the body. Kernel
+    ///   values win when present; the table makes the call work offline.
     ///
     /// The lunar frame is taken straight from the segment, so no frame kernel
     /// need be read for it; `moon_080317.tf` is needed only to reach the
@@ -602,26 +609,20 @@ impl PlanetaryConstants {
     ///
     /// # Errors
     ///
-    /// Returns [`StarfieldError::DataError`] if the kernels read so far define
-    /// no rotational elements for `body`, or if a lunar principal-axes segment
-    /// has been read that is relative to something other than J2000, which is
-    /// the only reference frame the rotation assumes.
+    /// Returns [`StarfieldError::DataError`] if neither the kernels read so far
+    /// nor the embedded table define rotational elements for `body`, or if a
+    /// lunar principal-axes segment has been read that is relative to
+    /// something other than J2000, which is the only reference frame the
+    /// rotation assumes.
     ///
     /// # Example
     ///
     /// ```
     /// use starfield::planetarylib::PlanetaryConstants;
     ///
-    /// let mut pc = PlanetaryConstants::new();
-    /// pc.read_text(concat!(
-    ///     "KPL/PCK\n\\begindata\n",
-    ///     "BODY499_POLE_RA = ( 317.269202 -0.10927547 0.0 )\n",
-    ///     "BODY499_POLE_DEC = ( 54.432516 -0.05827105 0.0 )\n",
-    ///     "BODY499_PM = ( 176.049863 350.891982443297 0.0 )\n",
-    ///     "\\begintext\n",
-    /// )).unwrap();
-    /// assert!(pc.frame_for(499).is_ok());
-    /// assert!(pc.frame_for(599).is_err());
+    /// let pc = PlanetaryConstants::new();
+    /// assert!(pc.frame_for(499).is_ok());   // Mars, from the embedded table
+    /// assert!(pc.frame_for(401).is_err());  // Phobos needs a text kernel
     /// ```
     pub fn frame_for(&self, body: i32) -> Result<Box<dyn Frame>> {
         if body == EARTH {
@@ -632,7 +633,18 @@ impl PlanetaryConstants {
                 return Ok(Box::new(frame));
             }
         }
-        Ok(Box::new(IauFrame::new(body, self)?))
+        if let Ok(frame) = IauFrame::new(body, self) {
+            return Ok(Box::new(frame));
+        }
+        IauFrame::from_naif_id(body)
+            .map(|frame| Box::new(frame) as Box<dyn Frame>)
+            .ok_or_else(|| {
+                StarfieldError::DataError(format!(
+                    "neither the text kernels read so far nor the embedded IAU table \
+                     define rotational elements for body {}",
+                    body
+                ))
+            })
     }
 
     /// The lunar principal-axes frame of the best binary PCK read so far, or

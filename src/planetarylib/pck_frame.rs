@@ -603,8 +603,8 @@ mod tests {
         }
     }
 
-    /// A body other than the Moon ignores the lunar segments entirely, and
-    /// with no elements read there is nothing to build it from.
+    /// A body other than the Moon ignores the lunar segments entirely: Mars
+    /// comes from the embedded table, and a body the table lacks has nothing.
     #[test]
     fn test_frame_for_another_body_ignores_the_lunar_segments() {
         let mut pc = PlanetaryConstants::new();
@@ -612,7 +612,12 @@ mod tests {
             test_support::MOON_PA_DE421,
             [0.375, 1.0, 0.5],
         ));
-        assert!(pc.frame_for(499).is_err());
+        let t = crate::time::Timescale::default().tdb_jd(2455362.5);
+        assert_eq!(
+            pc.frame_for(499).unwrap().rotation_at(&t),
+            crate::planetarylib::IauFrame::from_body(crate::planetlib::Body::Mars).rotation_at(&t)
+        );
+        assert!(pc.frame_for(401).is_err());
         assert!(pc.frame_for(301).is_ok());
     }
 
