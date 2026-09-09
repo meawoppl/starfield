@@ -135,4 +135,90 @@ rust.collect_string(json.dumps({
             "Galactic lat: rust={rust_lat} python={py_lat}"
         );
     }
+
+    /// The three epochs the illumination comparison uses, as TDB Julian dates:
+    /// J2000, the HiRISE Earth portrait of 2007-10-03, and the Mars opposition
+    /// of 2020-10-13.
+    const ILLUMINATION_EPOCHS: [f64; 3] = [2451545.0, 2454376.5, 2459136.5];
+
+    /// `Position::phase_angle` and `illuminated_fraction` match Skyfield's
+    /// `phase_angle` and `fraction_illuminated`, both for a planet seen from
+    /// the Earth and for the Earth seen from that planet.
+    #[test]
+    fn test_phase_angle_matches_skyfield() {
+        let bridge = PyRustBridge::new().expect("Failed to create Python bridge");
+        let mut kernel = de421_kernel();
+        let ts = Timescale::default();
+
+        let py_result = bridge
+            .run_py_to_json(
+                r#"
+from skyfield.api import load, load_file
+import json
+
+ts = load.timescale()
+eph = load_file('test_data/de421.bsp')
+sun = eph[10]
+
+rows = []
+for jd in (2451545.0, 2454376.5, 2459136.5):
+    t = ts.tdb_jd(jd)
+    mars_from_earth = eph[399].at(t).observe(eph[499])
+    earth_from_mars = eph[499].at(t).observe(eph[399])
+    rows.append({
+        "mars_phase": mars_from_earth.phase_angle(sun).radians,
+        "mars_fraction": float(mars_from_earth.fraction_illuminated(sun)),
+        "earth_phase": earth_from_mars.phase_angle(sun).radians,
+        "earth_fraction": float(earth_from_mars.fraction_illuminated(sun)),
+    })
+
+rust.collect_string(json.dumps(rows))
+"#,
+            )
+            .expect("Python phase angle failed");
+
+        let inner_str = match PythonResult::try_from(py_result.as_str())
+            .expect("Failed to parse Python result")
+        {
+            PythonResult::String(s) => s,
+            other => panic!("Expected String result, got {:?}", other),
+        };
+        let rows: serde_json::Value = serde_json::from_str(&inner_str).expect("JSON parse failed");
+
+        for (i, &jd) in ILLUMINATION_EPOCHS.iter().enumerate() {
+            let t = ts.tdb_jd(jd);
+            let row = &rows[i];
+
+            let earth = kernel.at("399", &t).unwrap();
+            let mars_from_earth = earth.observe("499", &mut kernel, &t).unwrap();
+            let mars = kernel.at("499", &t).unwrap();
+            let earth_from_mars = mars.observe("399", &mut kernel, &t).unwrap();
+
+            for (label, position, py_phase, py_fraction) in [
+                (
+                    "Mars from Earth",
+                    &mars_from_earth,
+                    row["mars_phase"].as_f64().unwrap(),
+                    row["mars_fraction"].as_f64().unwrap(),
+                ),
+                (
+                    "Earth from Mars",
+                    &earth_from_mars,
+                    row["earth_phase"].as_f64().unwrap(),
+                    row["earth_fraction"].as_f64().unwrap(),
+                ),
+            ] {
+                let phase = position.phase_angle(&mut kernel, &t).unwrap();
+                let fraction = position.illuminated_fraction(&mut kernel, &t).unwrap();
+                assert!(
+                    (phase - py_phase).abs() < 1e-8,
+                    "{label} phase at JD {jd}: rust={phase} python={py_phase}"
+                );
+                assert!(
+                    (fraction - py_fraction).abs() < 1e-8,
+                    "{label} fraction at JD {jd}: rust={fraction} python={py_fraction}"
+                );
+            }
+        }
+    }
 }

@@ -67,6 +67,9 @@ pub enum StarfieldError {
     #[error("Object not found: {0}")]
     ObjectNotFound(String),
 
+    #[error("Position does not carry the observer's barycentric position")]
+    MissingObserver,
+
     #[error("Ephemeris error: {0}")]
     EphemerisError(#[from] jplephem::JplephemError),
 }
