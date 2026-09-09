@@ -82,7 +82,9 @@ for jd in [{jds}]:
         ra_a, dec_a, _ = apparent.radec()
         out.append(ra_a._degrees)
         out.append(dec_a.degrees)
-rust.collect_string(','.join(repr(v) for v in out))
+# float() first: NumPy 2 reprs a scalar as np.float64(...), which the
+# Rust side cannot parse.
+rust.collect_string(','.join(repr(float(v)) for v in out))
 "#,
             table = python_star_table(),
             jds = jds
