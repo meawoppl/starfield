@@ -10,7 +10,10 @@
 //!
 //! Build one with
 //! [`PlanetaryConstants::build_frame_named`](crate::planetarylib::PlanetaryConstants::build_frame_named),
-//! which is the port of Skyfield's `planetarylib.PlanetaryConstants`.
+//! which is the port of Skyfield's `planetarylib.PlanetaryConstants`, or let
+//! [`PlanetaryConstants::frame_for`](crate::planetarylib::PlanetaryConstants::frame_for)
+//! reach for one on its own: given the Moon and a loaded `moon_pa_*.bpc` it
+//! returns the principal-axes frame rather than the IAU elements.
 //!
 //! This is the most accurate body-fixed frame available for the Moon: the
 //! lunar principal-axes frames `MOON_PA_DE421` (frame class id 31006) and
@@ -510,6 +513,107 @@ mod tests {
         .unwrap();
         assert!(pc.build_frame_named("MOON_PA_DE421").is_err());
         assert!(pc.build_frame_named("NO_SUCH_FRAME").is_err());
+    }
+
+    /// A verbatim excerpt of `pck00011.tpc`, the source of the IAU elements
+    /// the Moon falls back on when no binary kernel has been read.
+    const EXCERPT: &str = include_str!("pck00011_excerpt.tpc");
+
+    /// A synthetic principal-axes kernel covering one day about J2000, whose
+    /// three Euler angles are constant and of the test's choosing.
+    fn synthetic_moon_pa(frame_id: i32, angles: [f64; 3]) -> crate::jplephem::pck::PCK {
+        let coefficients = std::array::from_fn(|i| vec![angles[i], 0.0, 0.0]);
+        let bytes = test_support::synthetic_pck(
+            frame_id,
+            2,
+            &[(0.0, crate::jplephem::S_PER_DAY / 2.0, coefficients)],
+        )
+        .unwrap();
+        crate::jplephem::pck::PCK::from_bytes(&bytes).unwrap()
+    }
+
+    /// `frame_for(301)` prefers a loaded principal-axes segment to the IAU
+    /// elements, and needs no frame kernel to do it.
+    #[test]
+    fn test_frame_for_the_moon_prefers_a_principal_axes_kernel() {
+        use crate::planetarylib::IauFrame;
+        use crate::planetlib::Body;
+
+        let angles = [0.375, 1.0, 0.5];
+        let mut pc = PlanetaryConstants::new();
+        pc.read_text(EXCERPT).unwrap();
+        pc.read_binary(synthetic_moon_pa(test_support::MOON_PA_DE421, angles));
+
+        let t = crate::time::Timescale::default().tdb_jd(2451545.0);
+        let expected = rot_z(-angles[2]) * rot_x(-angles[1]) * rot_z(-angles[0]);
+        let frame = pc.frame_for(301).unwrap();
+        assert!((frame.rotation_at(&t) - expected).abs().max() < 1e-14);
+
+        // Without the binary kernel the same call gives the IAU elements.
+        let mut iau_only = PlanetaryConstants::new();
+        iau_only.read_text(EXCERPT).unwrap();
+        assert_eq!(
+            iau_only.frame_for(301).unwrap().rotation_at(&t),
+            IauFrame::from_body(Body::Moon).rotation_at(&t)
+        );
+        // And the two frames really are different frames.
+        assert!(
+            (frame.rotation_at(&t) - IauFrame::from_body(Body::Moon).rotation_at(&t))
+                .abs()
+                .max()
+                > 1e-3
+        );
+    }
+
+    /// `MOON_PA_DE440` wins when both principal-axes kernels are loaded.
+    #[test]
+    fn test_frame_for_the_moon_prefers_de440_to_de421() {
+        let de421 = [0.375, 1.0, 0.5];
+        let de440 = [0.25, 0.75, 0.125];
+
+        let mut pc = PlanetaryConstants::new();
+        pc.read_binary(synthetic_moon_pa(test_support::MOON_PA_DE421, de421));
+        pc.read_binary(synthetic_moon_pa(31008, de440));
+
+        let t = crate::time::Timescale::default().tdb_jd(2451545.0);
+        let expected = rot_z(-de440[2]) * rot_x(-de440[1]) * rot_z(-de440[0]);
+        let rotation = pc.frame_for(301).unwrap().rotation_at(&t);
+        assert!((rotation - expected).abs().max() < 1e-14);
+    }
+
+    /// The real kernel, against the same golden matrices Skyfield produced —
+    /// and without a frame kernel, which `frame_for` does not need.
+    #[test]
+    #[ignore = "downloads moon_pa_de421_1900-2050.bpc"]
+    fn test_frame_for_the_moon_matches_the_published_kernel() {
+        let loader = crate::Loader::new();
+        let mut pc = PlanetaryConstants::new();
+        pc.read_binary(
+            loader
+                .open_binary_pck("moon_pa_de421_1900-2050.bpc")
+                .unwrap(),
+        );
+        assert!(pc.build_frame_named("MOON_PA_DE421").is_err());
+
+        let frame = pc.frame_for(301).unwrap();
+        let ts = crate::time::Timescale::default();
+        for (jd, expected) in MOON_PA_DE421_GOLDEN {
+            let t = ts.tdb_jd(jd);
+            assert_matches(&frame.rotation_at(&t), &expected, 1e-9, &format!("JD {jd}"));
+        }
+    }
+
+    /// A body other than the Moon ignores the lunar segments entirely, and
+    /// with no elements read there is nothing to build it from.
+    #[test]
+    fn test_frame_for_another_body_ignores_the_lunar_segments() {
+        let mut pc = PlanetaryConstants::new();
+        pc.read_binary(synthetic_moon_pa(
+            test_support::MOON_PA_DE421,
+            [0.375, 1.0, 0.5],
+        ));
+        assert!(pc.frame_for(499).is_err());
+        assert!(pc.frame_for(301).is_ok());
     }
 
     #[test]
