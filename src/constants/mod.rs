@@ -42,6 +42,37 @@ pub const GS: f64 = 1.327_124_400_179_87e+20;
 /// Solar GM in km^3/s^2 (Pitjeva 2005)
 pub const GM_SUN: f64 = 132_712_440_042.0;
 
+// Planetary gravitational parameters
+//
+// GM of each planetary system (barycenter), plus the Earth, Moon and Mars
+// bodies themselves, in km^3/s^2. Values are the JPL DE440 constants
+// (Park, Folkner, Williams & Boggs 2021, AJ 161, 105, Table 4), which are the
+// same set the DE440 header carries in AU^3/day^2; multiply by
+// [`GM_KM3_S2_TO_AU3_D2`] for that form. Use the body GM, not the system GM,
+// for an orbit close enough to the planet that its moons do not matter.
+/// GM of the Mercury system in km^3/s^2 (DE440)
+pub const GM_MERCURY: f64 = 22_031.868_551;
+/// GM of the Venus system in km^3/s^2 (DE440)
+pub const GM_VENUS: f64 = 324_858.592;
+/// GM of the Earth in km^3/s^2 (DE440)
+pub const GM_EARTH: f64 = 398_600.435_507;
+/// GM of the Moon in km^3/s^2 (DE440)
+pub const GM_MOON: f64 = 4_902.800_118;
+/// GM of the Mars system in km^3/s^2 (DE440)
+pub const GM_MARS_SYSTEM: f64 = 42_828.375_816;
+/// GM of Mars itself in km^3/s^2 (DE440); Phobos and Deimos add 1e-4 km^3/s^2
+pub const GM_MARS: f64 = 42_828.375_214;
+/// GM of the Jupiter system in km^3/s^2 (DE440)
+pub const GM_JUPITER: f64 = 126_712_764.1;
+/// GM of the Saturn system in km^3/s^2 (DE440)
+pub const GM_SATURN: f64 = 37_940_584.841_8;
+/// GM of the Uranus system in km^3/s^2 (DE440)
+pub const GM_URANUS: f64 = 5_794_556.4;
+/// GM of the Neptune system in km^3/s^2 (DE440)
+pub const GM_NEPTUNE: f64 = 6_836_527.100_58;
+/// GM of the Pluto system in km^3/s^2 (DE440)
+pub const GM_PLUTO: f64 = 975.5;
+
 // Earth constants
 /// Earth's angular velocity in radians/s
 pub const EARTH_ANGVEL: f64 = 7.292_115_0e-5;
@@ -53,6 +84,8 @@ pub const IERS_2010_INVERSE_EARTH_FLATTENING: f64 = 298.25642;
 // Derived constants
 /// Speed of light in AU/day
 pub const C_AUDAY: f64 = C * DAY_S / AU_M;
+/// Factor converting a gravitational parameter from km^3/s^2 to AU^3/day^2
+pub const GM_KM3_S2_TO_AU3_D2: f64 = DAY_S * DAY_S / (AU_KM * AU_KM * AU_KM);
 
 // Calendar constants
 /// First day of Gregorian calendar in Julian day number (1582-10-15)

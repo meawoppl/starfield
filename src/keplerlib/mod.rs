@@ -33,12 +33,9 @@ use nalgebra::{Matrix3, Vector3};
 
 #[cfg(test)]
 use crate::constants::GM_SUN;
-use crate::constants::{AU_KM, DAY_S, DEG2RAD};
+use crate::constants::{DEG2RAD, GM_KM3_S2_TO_AU3_D2 as CONVERT_GM};
 use crate::positions::Position;
 use crate::time::Time;
-
-/// Convert GM from km³/s² to AU³/day²
-const CONVERT_GM: f64 = DAY_S * DAY_S / (AU_KM * AU_KM * AU_KM);
 
 /// A two-body Keplerian orbit
 ///
@@ -226,7 +223,59 @@ impl KeplerOrbit {
 
         Position::barycentric(pos, vel, self.center)
     }
+
+    /// Barycentric state of the body on this orbit at `t`.
+    ///
+    /// Adds the orbit's position and velocity relative to its central body —
+    /// [`KeplerOrbit::at`] — to that body's state from `kernel`, giving a
+    /// position relative to the solar system barycenter with the velocity that
+    /// [`Position::observe`] and [`Position::apparent`] need for light-time
+    /// and aberration. This is how a spacecraft on a Kepler orbit about
+    /// another planet becomes an observer.
+    ///
+    /// # Arguments
+    /// * `kernel` — the SPK supplying the central body's barycentric state
+    /// * `center` — kernel name (or NAIF id as a string) of the central body,
+    ///   which must be the body whose GM this orbit was built with and whose
+    ///   id is in [`KeplerOrbit::center`]
+    /// * `t` — the epoch
+    ///
+    /// The orbit's `mu_au3_d2` is the central body's GM, not the Sun's, for
+    /// anything but a heliocentric orbit; the planetary values are in
+    /// [`crate::constants`] (`GM_MARS`, `GM_EARTH`, …) in km³/s², which is
+    /// what [`KeplerOrbit::from_periapsis`] and
+    /// [`KeplerOrbit::from_mean_anomaly`] take.
+    ///
+    /// The returned position is [`crate::positions::PositionKind::Barycentric`]
+    /// with `target` set to the sentinel [`KEPLER_TARGET_ID`], since a body
+    /// defined by orbital elements has no NAIF id of its own.
+    pub fn barycentric_at(
+        &self,
+        kernel: &mut crate::jplephem::kernel::SpiceKernel,
+        center: &str,
+        t: &Time,
+    ) -> crate::jplephem::errors::Result<Position> {
+        use crate::jplephem_ext::SpiceKernelExt;
+
+        let center_state = kernel.at(center, t)?;
+        let relative = self.at(t);
+
+        Ok(Position::barycentric(
+            center_state.position + relative.position,
+            center_state.velocity + relative.velocity,
+            KEPLER_TARGET_ID,
+        ))
+    }
 }
+
+/// Target id given to a body whose position comes from a [`KeplerOrbit`].
+///
+/// Elements-defined bodies — comets, asteroids, a spacecraft on a modelled
+/// orbit — have no NAIF body id. `-1000001` is outside the range NAIF assigns
+/// to spacecraft (-1 … -999999), so it cannot be confused with an SPK target,
+/// and outside the range of planetary ids, so `magnitudelib` treats it as an
+/// unsupported body rather than mistaking it for a planet.
+pub const KEPLER_TARGET_ID: i32 = -1_000_001;
 
 impl std::fmt::Display for KeplerOrbit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -842,5 +891,171 @@ mod tests {
         let orbit = comet_orbit(1.0, 0.5, 0.0, 0.0, 0.0, &epoch, GM_SUN, Some("1P/Halley"));
         let s = format!("{orbit}");
         assert!(s.contains("Halley"));
+    }
+
+    // --- Barycentric observer on an orbit about another planet ---
+
+    /// 2003-10-02, when Mars is 0.498 AU from Earth.
+    const CLOSE_APPROACH_TDB: f64 = 2452923.0;
+
+    /// Radius of the circular Mars orbit used below, in km.
+    const ORBIT_RADIUS_KM: f64 = 17_000.0;
+
+    fn de421_kernel() -> crate::jplephem::kernel::SpiceKernel {
+        crate::jplephem::kernel::SpiceKernel::open("test_data/de421.bsp")
+            .expect("Failed to open DE421")
+    }
+
+    /// A circular orbit of `ORBIT_RADIUS_KM` about Mars whose position at
+    /// `epoch` is perpendicular to the Mars → Earth direction, so the whole
+    /// offset shows up as a shift in the apparent direction of Earth.
+    fn perpendicular_mars_orbit(
+        kernel: &mut crate::jplephem::kernel::SpiceKernel,
+        epoch: &Time,
+    ) -> KeplerOrbit {
+        use crate::jplephem_ext::SpiceKernelExt;
+
+        let mars = kernel.at("mars", epoch).unwrap();
+        let earth = kernel.at("earth", epoch).unwrap();
+        let to_earth = (earth.position - mars.position).normalize();
+
+        // Two unit vectors perpendicular to the line of sight.
+        let radial = to_earth.cross(&Vector3::z()).normalize();
+        let along_track = to_earth.cross(&radial).normalize();
+
+        let radius_au = ORBIT_RADIUS_KM / crate::constants::AU_KM;
+        let mu = crate::constants::GM_MARS * CONVERT_GM;
+        let speed = (mu / radius_au).sqrt();
+
+        KeplerOrbit::new(
+            radial * radius_au,
+            along_track * speed,
+            epoch,
+            mu,
+            Some(499),
+            Some("Mars orbiter"),
+        )
+    }
+
+    /// A 17 000 km orbit about Mars shifts the apparent direction of Earth by
+    /// the orbit radius over the range: 47″ at the 0.498 AU close approach of
+    /// 2003 (46.9″ at exactly 0.5 AU).
+    #[test]
+    fn test_orbiter_parallax_matches_radius_over_range() {
+        use crate::jplephem_ext::SpiceKernelExt;
+
+        let mut kernel = de421_kernel();
+        let t = ts().tdb_jd(CLOSE_APPROACH_TDB);
+
+        let orbit = perpendicular_mars_orbit(&mut kernel, &t);
+        let orbiter = orbit.barycentric_at(&mut kernel, "mars", &t).unwrap();
+        let mars = kernel.at("mars", &t).unwrap();
+
+        let from_orbiter = orbiter.observe("earth", &mut kernel, &t).unwrap();
+        let from_mars = mars.observe("earth", &mut kernel, &t).unwrap();
+
+        let range_au = from_mars.distance();
+        let expected = ORBIT_RADIUS_KM / crate::constants::AU_KM / range_au;
+        let measured = from_orbiter.separation_from(&from_mars);
+
+        let arcsec = 180.0 / PI * 3600.0;
+        println!(
+            "Mars-Earth range {range_au:.4} AU: measured {:.3}\", expected {:.3}\"",
+            measured * arcsec,
+            expected * arcsec
+        );
+        assert!(
+            (range_au - 0.5).abs() < 0.01,
+            "range {range_au} AU is not the intended close approach"
+        );
+        assert!(
+            (measured - expected).abs() < 0.02 * expected,
+            "measured {}\" vs expected {}\"",
+            measured * arcsec,
+            expected * arcsec
+        );
+    }
+
+    /// The orbiter's state is its central body's plus the orbit's own, and
+    /// the velocity is present — that is what aberration needs.
+    #[test]
+    fn test_barycentric_at_adds_center_state() {
+        use crate::jplephem_ext::SpiceKernelExt;
+
+        let mut kernel = de421_kernel();
+        let t = ts().tdb_jd(CLOSE_APPROACH_TDB);
+
+        let orbit = perpendicular_mars_orbit(&mut kernel, &t);
+        let orbiter = orbit.barycentric_at(&mut kernel, "mars", &t).unwrap();
+        let mars = kernel.at("mars", &t).unwrap();
+        let relative = orbit.at(&t);
+
+        assert_eq!(orbiter.kind, crate::positions::PositionKind::Barycentric);
+        assert_eq!(orbiter.center, 0);
+        assert_eq!(orbiter.target, KEPLER_TARGET_ID);
+        assert_relative_eq!(
+            (orbiter.position - mars.position - relative.position).norm(),
+            0.0,
+            epsilon = 1e-15
+        );
+        assert_relative_eq!(
+            (orbiter.velocity - mars.velocity - relative.velocity).norm(),
+            0.0,
+            epsilon = 1e-15
+        );
+
+        // Circular orbit speed about Mars: 17 000 km radius gives 1.59 km/s.
+        let speed_km_s =
+            relative.velocity.norm() * crate::constants::AU_KM / crate::constants::DAY_S;
+        assert_relative_eq!(speed_km_s, 1.587, epsilon = 0.01);
+
+        // The offset from Mars is the orbit radius.
+        let offset_km = relative.position.norm() * crate::constants::AU_KM;
+        assert_relative_eq!(offset_km, ORBIT_RADIUS_KM, epsilon = 1e-6);
+    }
+
+    /// `observe` and `planetary_magnitude` both work from the orbiter, which
+    /// needs `observer_barycentric` to be populated.
+    #[test]
+    fn test_orbiter_observes_and_has_magnitude() {
+        let mut kernel = de421_kernel();
+        let t = ts().tdb_jd(CLOSE_APPROACH_TDB);
+
+        let orbit = perpendicular_mars_orbit(&mut kernel, &t);
+        let orbiter = orbit.barycentric_at(&mut kernel, "mars", &t).unwrap();
+
+        let earth = orbiter.observe("earth", &mut kernel, &t).unwrap();
+        assert!(earth.observer_barycentric.is_some());
+        let apparent = earth.apparent(&mut kernel, &t).unwrap();
+        assert_eq!(apparent.kind, crate::positions::PositionKind::Apparent);
+
+        // Earth from Mars at 0.5 AU near opposition is around magnitude -2.
+        let magnitude = crate::magnitudelib::planetary_magnitude(&earth, &t).unwrap();
+        assert!(
+            (-4.0..0.0).contains(&magnitude),
+            "Earth from Mars magnitude {magnitude}"
+        );
+    }
+
+    /// A Kepler orbit about Mars must use Mars's GM, not the Sun's.
+    #[test]
+    fn test_orbit_period_follows_the_center_gm() {
+        let mut kernel = de421_kernel();
+        let t = ts().tdb_jd(CLOSE_APPROACH_TDB);
+        let orbit = perpendicular_mars_orbit(&mut kernel, &t);
+
+        // Circular period 2*PI*sqrt(r^3/mu): 17 000 km about Mars is 18.69 h.
+        let radius_au = ORBIT_RADIUS_KM / crate::constants::AU_KM;
+        let period_days = 2.0 * PI * (radius_au.powi(3) / orbit.mu_au3_d2).sqrt();
+        assert_relative_eq!(period_days * 24.0, 18.69, epsilon = 0.01);
+
+        // Half a period later the orbiter is on the other side of Mars.
+        let half = ts().tdb_jd(CLOSE_APPROACH_TDB + period_days / 2.0);
+        let opposite = orbit.at(&half);
+        assert_relative_eq!(
+            (opposite.position + orbit.at(&t).position).norm(),
+            0.0,
+            epsilon = 1e-10
+        );
     }
 }

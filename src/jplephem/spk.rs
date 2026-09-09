@@ -32,6 +32,14 @@ pub fn jd_to_seconds(jd: f64) -> f64 {
     (jd - T0) * S_PER_DAY
 }
 
+/// SPK data types this reader can evaluate: Chebyshev position (2), Chebyshev
+/// position and velocity (3), and extended modified difference arrays (21).
+///
+/// Segments of any other type are skipped when a file is parsed, so a body
+/// carried only by such segments is not reachable; `Position::from_spk_target`
+/// reports that as [`JplephemError::UnsupportedDataType`].
+pub const SUPPORTED_DATA_TYPES: [i32; 3] = [2, 3, 21];
+
 /// Spacecraft Planet Kernel (SPK) file reader
 pub struct SPK {
     /// The underlying DAF file
@@ -135,7 +143,7 @@ impl SPK {
             if start_i == 0 || end_i < start_i {
                 continue;
             }
-            if data_type != 2 && data_type != 3 && data_type != 21 {
+            if !SUPPORTED_DATA_TYPES.contains(&data_type) {
                 continue;
             }
 
