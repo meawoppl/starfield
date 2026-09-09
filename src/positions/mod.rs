@@ -20,6 +20,7 @@
 //! ```
 
 pub mod ecliptic;
+pub mod illumination;
 
 #[cfg(all(test, feature = "python-tests"))]
 mod python_tests;
