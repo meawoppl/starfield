@@ -49,6 +49,7 @@
 //! ```
 
 pub mod iau_frame;
+pub mod occult;
 pub mod pck_frame;
 #[cfg(all(test, feature = "python-tests"))]
 mod python_tests;

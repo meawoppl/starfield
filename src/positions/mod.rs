@@ -19,6 +19,7 @@
 //! let (ra, dec, dist) = mars_apparent.radec(None);
 //! ```
 
+pub mod angular_size;
 pub mod ecliptic;
 pub mod illumination;
 
