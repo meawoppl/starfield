@@ -1,5 +1,5 @@
-//! Sub-observer and sub-solar points: which hemisphere of a body faces the
-//! observer, and which faces the Sun.
+//! Disc orientation: which hemisphere of a body faces the observer, which
+//! faces the Sun, and how the axis and the bright limb lie on the sky.
 //!
 //! Run with:
 //!
@@ -49,6 +49,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         report("sub-observer", &sub_observer, target, radii);
         report("sub-solar", &sub_solar, target, radii);
+
+        // Where to put the axis and the crescent when the disc is drawn.
+        println!(
+            "  north pole    {:9.4}° east of celestial north",
+            position
+                .north_pole_position_angle(frame.as_ref(), &t)
+                .to_degrees()
+        );
+        println!(
+            "  bright limb   {:9.4}° east of celestial north, {:.1}% lit",
+            position
+                .bright_limb_position_angle(&mut kernel, &t)?
+                .to_degrees(),
+            100.0 * position.illuminated_fraction(&mut kernel, &t)?,
+        );
         println!();
     }
 

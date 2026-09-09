@@ -271,23 +271,43 @@ impl Position {
         kernel: &mut SpiceKernel,
         t: &Time,
     ) -> Result<SubPoint> {
-        let observer = self.require_observer()?;
         let epoch = t.shift_days(-self.light_time);
-
-        // The body's own barycentric position at the moment the light left it.
-        let body = observer.position + self.position;
-
-        let mut sun = kernel.at("sun", &epoch)?.position;
-        for _ in 0..SUN_LIGHT_TIME_ITERATIONS {
-            let light_time = (body - sun).norm() / C_AUDAY;
-            sun = kernel.at("sun", &epoch.shift_days(-light_time))?.position;
-        }
-
+        let body_to_sun = sun_seen_from_target(self, kernel, t)?;
         Ok(SubPoint::from_body_fixed(
-            frame.rotation_at(&epoch) * (sun - body),
+            frame.rotation_at(&epoch) * body_to_sun,
             radii_km,
         ))
     }
+}
+
+/// The vector in AU from the target of `position` to the Sun, in the ICRF,
+/// with the light time of both legs of the path removed: the body is taken at
+/// `t − light_time` and the Sun at the light time of the Sun → body leg
+/// before that, which is the geometry Horizons reports.
+///
+/// # Errors
+///
+/// Returns [`StarfieldError::MissingObserver`](crate::StarfieldError::MissingObserver)
+/// if `position` does not carry the observer's barycentric position, and the
+/// kernel's own errors if it cannot place the Sun.
+pub(crate) fn sun_seen_from_target(
+    position: &Position,
+    kernel: &mut SpiceKernel,
+    t: &Time,
+) -> Result<Vector3<f64>> {
+    let observer = position.require_observer()?;
+    let epoch = t.shift_days(-position.light_time);
+
+    // The body's own barycentric position at the moment the light left it.
+    let body = observer.position + position.position;
+
+    let mut sun = kernel.at("sun", &epoch)?.position;
+    for _ in 0..SUN_LIGHT_TIME_ITERATIONS {
+        let light_time = (body - sun).norm() / C_AUDAY;
+        sun = kernel.at("sun", &epoch.shift_days(-light_time))?.position;
+    }
+
+    Ok(sun - body)
 }
 
 /// `(a / c)²`, the factor that turns a planetocentric latitude's tangent into
