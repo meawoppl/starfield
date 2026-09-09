@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.0
+
+Completes the resolved-solar-system-bodies milestone from `docs/solar-system-bodies-plan.md`: disk geometry, illumination and non-Earth observers for the focalplane renderer.
+
+- Add `Position::{phase_angle, illuminated_fraction, solar_elongation}` using the true Sun from the kernel (`magnitudelib` keeps its SSB approximation); new `StarfieldError::MissingObserver` instead of NaN when the observer is unknown; `Time::shift_days` (#180)
+- Add `Position::observe_star` — apparent places of catalog stars for any barycentric observer, via `starlib::Star::observe_from`; matches Skyfield to < 1e-5 mas for 20 Hipparcos stars from Earth and Mars; shared `STAR_TARGET_ID` sentinel (#181)
+- Add `Position::{angular_semi_diameter, apparent_ellipse}` — the projected outline of a triaxial ellipsoid via the Schur complement of the rotated shape matrix — and `planetarylib::occult::{Occultation, occultation}` for None/Partial/Full occultation of one body by another, searchable with `searchlib::find_discrete` (#182)
+- Add `KeplerOrbit::barycentric_at` for spacecraft on a Kepler orbit about any body and `Position::from_spk_target` for arbitrary (including negative) SPK ids, reporting `UnsupportedDataType` for SPK types the reader lacks; DE440 planetary GM constants; `jplephem::spk::SUPPORTED_DATA_TYPES` (#183)
+- `PlanetaryConstants::frame_for(301)` returns the loaded lunar principal-axes `PckFrame` (DE440 preferred over DE421) when present, else `IauFrame` (#185)
+- Add `Position::{sub_observer_point, sub_solar_point}` returning planetographic `SubPoint`s with per-body east/west `LongitudeSense`, validated against JPL Horizons to < 0.01°; `horizons::EphemerisRequest::cal_format` so observer tables parse (#187)
+- Add `Position::{north_pole_position_angle, bright_limb_position_angle}` in the observer's sky frame, validated against Horizons NP.ang / SN.ang (#186)
+
 ## 0.15.0
 
 Foundation for resolved solar-system bodies (planets, Moon, limbs), built for the focalplane renderer; the plan and PR sequence live in `docs/solar-system-bodies-plan.md` (#171).
