@@ -135,6 +135,13 @@ static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Later assignments to the same name replace earlier ones, and `+=`
 /// assignments append, exactly as the SPICE readers do.
 ///
+/// This is the unchecked tokenizer, a port of Skyfield's `text_pck.load`: it
+/// does not look for the `KPL/…` magic number, and input with no
+/// `\begindata` block — an HTML error page, say — parses as an empty map.
+/// [`PlanetaryConstants::read_text`](crate::planetarylib::PlanetaryConstants::read_text)
+/// is the validated entry point; it checks
+/// [`TEXT_MAGIC_NUMBERS`](crate::planetarylib::TEXT_MAGIC_NUMBERS) first.
+///
 /// # Errors
 ///
 /// Returns [`StarfieldError::DataError`] if an assignment is malformed, if a

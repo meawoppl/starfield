@@ -848,4 +848,35 @@ mod tests {
         assert_eq!(mars, IauFrame::from_body(Body::Mars).rotation_at(&t));
         assert!(pc.frame_for(-1).is_err());
     }
+
+    /// With no kernel read, `frame_for` falls back to the embedded table for
+    /// the bodies it covers, and kernel values win once one is read.
+    #[test]
+    fn test_frame_for_falls_back_to_the_embedded_table() {
+        let ts = Timescale::default();
+        let t = ts.tdb_jd(2455362.5);
+
+        let empty = PlanetaryConstants::new();
+        let mars = empty.frame_for(499).unwrap().rotation_at(&t);
+        assert_eq!(mars, IauFrame::from_body(Body::Mars).rotation_at(&t));
+        let moon = empty.frame_for(301).unwrap().rotation_at(&t);
+        assert_eq!(moon, IauFrame::from_body(Body::Moon).rotation_at(&t));
+        // Phobos is in pck00011.tpc but not in the embedded table.
+        assert!(empty.frame_for(401).is_err());
+
+        let mut pc = PlanetaryConstants::new();
+        pc.read_text(concat!(
+            "KPL/PCK\n\\begindata\n",
+            "BODY499_POLE_RA = ( 300.0 0.0 0.0 )\n",
+            "BODY499_POLE_DEC = ( 50.0 0.0 0.0 )\n",
+            "BODY499_PM = ( 0.0 0.0 0.0 )\n",
+            "\\begintext\n",
+        ))
+        .unwrap();
+        let from_kernel = pc.frame_for(499).unwrap().rotation_at(&t);
+        assert_ne!(from_kernel, mars, "kernel values must override the table");
+        let (ra, dec, _) = IauFrame::new(499, &pc).unwrap().pole_and_meridian(&t);
+        assert!((ra.to_degrees() - 300.0).abs() < 1e-12);
+        assert!((dec.to_degrees() - 50.0).abs() < 1e-12);
+    }
 }

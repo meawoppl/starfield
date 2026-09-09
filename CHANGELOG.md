@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.1
+
+- `PlanetaryConstants::frame_for` now falls back to the embedded IAU 2015 table when no text kernel read so far defines the body, as the plan promised: `PlanetaryConstants::new().frame_for(499)` works offline, and kernel values still win when loaded. Earth (`ItrsFrame`) and the Moon with a principal-axes kernel (`PckFrame`) are unchanged
+- `planetarylib::TEXT_MAGIC_NUMBERS` is public so content validators can reuse starfield's own list of text-kernel magic numbers; `text_pck::{parse, load}` are documented as the unchecked tokenizer beneath the validated `read_text`
+- `data::downloader::tests::test_known_endpoints_reachable` is `#[ignore]`d: it made live HEAD requests to JPL and NAIF from the default suite and failed CI three times in one day on upstream hiccups
+
 ## 0.16.0
 
 Completes the resolved-solar-system-bodies milestone from `docs/solar-system-bodies-plan.md`: disk geometry, illumination and non-Earth observers for the focalplane renderer.
