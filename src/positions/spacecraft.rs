@@ -27,12 +27,9 @@
 use crate::constants::{AU_KM, DAY_S};
 use crate::jplephem::errors::{JplephemError, Result};
 use crate::jplephem::kernel::SpiceKernel;
-use crate::jplephem::spk::jd_to_seconds;
+use crate::jplephem::spk::{jd_to_seconds, SUPPORTED_DATA_TYPES};
 use crate::positions::Position;
 use crate::time::Time;
-
-/// SPK data types this crate's reader can evaluate.
-const SUPPORTED_DATA_TYPES: [i32; 3] = [2, 3, 21];
 
 impl Position {
     /// Barycentric state of an SPK target id at `t`.
