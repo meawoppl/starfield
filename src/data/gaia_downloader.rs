@@ -409,25 +409,51 @@ pub(crate) fn fetch_shard_with(
     Ok(alias.to_path_buf())
 }
 
-/// Atomically point `alias` at `blob`: link or copy into a temp name beside
-/// it, then rename over whatever was there.
+/// Atomically point `alias` at `blob`: link or copy into a uniquely named
+/// temp file beside it, then rename over whatever was there. Concurrent
+/// publishers of the same alias each work on their own temp file, and a
+/// failed link or copy leaves nothing behind.
 #[cfg(feature = "datastore")]
 fn publish_alias(blob: &Path, alias: &Path) -> Result<()> {
+    if same_file(blob, alias) {
+        return Ok(());
+    }
     let parent = alias
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     fs::create_dir_all(parent).map_err(StarfieldError::IoError)?;
-    let name = alias
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| StarfieldError::DataError("alias path has no file name".into()))?;
-    let staging = parent.join(format!(".{name}.staging"));
-    let _ = fs::remove_file(&staging);
+    let staging = tempfile::NamedTempFile::new_in(parent)
+        .map_err(StarfieldError::IoError)?
+        .into_temp_path();
+    let staging_path = staging.to_path_buf();
+    // The placeholder reserved a unique name; the link (or copy) takes it over.
+    fs::remove_file(&staging).map_err(StarfieldError::IoError)?;
     if fs::hard_link(blob, &staging).is_err() {
         fs::copy(blob, &staging).map_err(StarfieldError::IoError)?;
     }
-    fs::rename(&staging, alias).map_err(StarfieldError::IoError)
+    let persisted = staging
+        .persist(alias)
+        .map_err(|error| StarfieldError::IoError(error.error));
+    // rename() of two links to one inode is a no-op that leaves the source:
+    // another publisher may have installed the same blob first.
+    let _ = fs::remove_file(&staging_path);
+    persisted
+}
+
+/// Whether `alias` already is the blob (a hard link to the same inode).
+#[cfg(all(feature = "datastore", unix))]
+fn same_file(blob: &Path, alias: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (fs::metadata(blob), fs::metadata(alias)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+#[cfg(all(feature = "datastore", not(unix)))]
+fn same_file(_blob: &Path, _alias: &Path) -> bool {
+    false
 }
 
 /// Forget a shard whose archive MD5 did not match: the alias goes, and the
@@ -673,6 +699,51 @@ mod tests {
             .unwrap()
             .join(format!(".{SHARD}.staging"))
             .exists());
+    }
+
+    #[cfg(feature = "datastore")]
+    #[test]
+    fn concurrent_resolves_of_one_alias_all_end_with_the_validated_blob() {
+        let shard = synthetic_shard(400);
+        let (mirror, requested) =
+            stub_mirror(HashMap::from([(SHARD_KEY.to_string(), shard.clone())]));
+        let root = tempfile::tempdir().unwrap();
+        let store = std::sync::Arc::new(store_with(&root.path().join("store"), mirror));
+        let alias = root.path().join("gaia").join(SHARD);
+        fs::create_dir_all(alias.parent().unwrap()).unwrap();
+        fs::write(&alias, "<html>stale</html>").unwrap();
+
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                let store = store.clone();
+                let alias = alias.clone();
+                std::thread::spawn(move || fetch_shard_with(&store, SHARD, &alias).unwrap())
+            })
+            .collect();
+        for worker in workers {
+            assert_eq!(worker.join().unwrap(), alias);
+        }
+        assert_eq!(fs::read(&alias).unwrap(), shard);
+        assert_eq!(list_cached_in(alias.parent().unwrap()), vec![alias.clone()]);
+        let leftovers: Vec<_> = fs::read_dir(alias.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.starts_with('.'))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "no staging files survive: {leftovers:?}"
+        );
+        assert_eq!(
+            requested
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|k| k.as_str() == SHARD_KEY)
+                .count(),
+            1,
+            "the key lock let one fetch through"
+        );
     }
 
     #[cfg(feature = "datastore")]

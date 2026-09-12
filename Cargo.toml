@@ -67,6 +67,7 @@ clap = { version = "4.5.40", features = ["derive"] }
 memmap2 = "0.9"
 uom = "0.37.0"
 sgp4 = "2.3.0"
+tempfile = { version = "3.8", optional = true }
 
 
 [dev-dependencies]
@@ -81,7 +82,7 @@ default = ["datastore"]
 # Resolve data files through the organisation's pull-through cache
 # (local disk -> ephemeris server -> upstream). Off: the legacy direct
 # downloader with a flat ~/.cache/starfield/ layout.
-datastore = ["dep:starfield-datastore", "dep:url", "dep:sha2"]
+datastore = ["dep:starfield-datastore", "dep:url", "dep:sha2", "dep:tempfile"]
 python-tests = ["pyo3", "anyhow"]
 # Optional traits for per-band photometry, measured radial surface-brightness
 # profiles, and isophote shape series. Gated behind a feature so consumers
