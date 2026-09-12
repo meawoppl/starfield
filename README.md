@@ -61,6 +61,8 @@ cargo stats --catalog hipparcos --operation filter --magnitude 6.0 --output brig
 
 # Download Gaia catalog data
 cargo run --example gaia_downloader -- --download 1
+# Data files resolve through the organisation's pull-through cache; see
+# docs/datastore.md for STARFIELD_MIRROR / STARFIELD_ALLOW_UPSTREAM.
 
 # Filter Gaia data by magnitude and export to binary format
 cargo run --example gaia_filter -- --input /path/to/gaia_file.csv.gz --output filtered_stars.bin --magnitude 18.0

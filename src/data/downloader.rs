@@ -6,21 +6,23 @@ use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+#[cfg(not(feature = "datastore"))]
 use std::time::Duration;
 
 use crate::Result;
 use crate::StarfieldError;
 
+#[cfg(not(feature = "datastore"))]
 use indicatif::{ProgressBar, ProgressStyle};
 
-// Hipparcos catalog URL
-const HIPPARCOS_URL: &str = "https://cdsarc.cds.unistra.fr/ftp/cats/I/239/hip_main.dat";
+/// The Hipparcos main catalogue as served by CDS.
+pub const HIPPARCOS_URL: &str = "https://cdsarc.cds.unistra.fr/ftp/cats/I/239/hip_main.dat";
 
 /// Base URL for JPL planetary ephemeris BSP files
-const JPL_BSP_URL: &str = "https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/";
+pub const JPL_BSP_URL: &str = "https://ssd.jpl.nasa.gov/ftp/eph/planets/bsp/";
 
 /// Base URL for NAIF satellite SPK files
-const NAIF_SATELLITES_URL: &str =
+pub const NAIF_SATELLITES_URL: &str =
     "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/";
 
 /// Base URL for NAIF generic PCK kernels
@@ -38,6 +40,18 @@ pub const NAIF_PCK_URL: &str = "https://naif.jpl.nasa.gov/pub/naif/generic_kerne
 pub const NAIF_FK_SATELLITES_URL: &str =
     "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/fk/satellites/";
 
+/// Base URL for NAIF leap-second kernels (`.tls`, e.g. `naif0012.tls`).
+pub const NAIF_LSK_URL: &str = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/";
+
+/// NAIF's own copy of the planetary SPKs (`de440.bsp`), the same files JPL
+/// serves from [`JPL_BSP_URL`]; older releases sit under `a_old_versions/`.
+pub const NAIF_PLANETS_URL: &str =
+    "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/";
+
+/// Superseded planetary SPKs on NAIF (`de421.bsp`, `de405.bsp`).
+pub const NAIF_PLANETS_OLD_URL: &str =
+    "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/a_old_versions/";
+
 /// Get the cache directory path
 pub fn get_cache_dir() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -52,6 +66,7 @@ pub fn ensure_cache_dir() -> io::Result<PathBuf> {
 }
 
 /// Check if a file exists and is not empty
+#[cfg(not(feature = "datastore"))]
 pub(crate) fn file_exists_and_not_empty<P: AsRef<Path>>(path: P) -> bool {
     match fs::metadata(path) {
         Ok(metadata) => metadata.is_file() && metadata.len() > 0,
@@ -60,6 +75,7 @@ pub(crate) fn file_exists_and_not_empty<P: AsRef<Path>>(path: P) -> bool {
 }
 
 /// Download a file from URL to a local path
+#[cfg(not(feature = "datastore"))]
 fn download_file<P: AsRef<Path>>(url: &str, path: P) -> Result<()> {
     // Create parent directories if they don't exist
     if let Some(parent) = path.as_ref().parent() {
@@ -182,6 +198,7 @@ fn decompress_gzip<P: AsRef<Path>, Q: AsRef<Path>>(gz_path: P, output_path: Q) -
 ///   directory when the name starts with `jup`
 /// - `*.tpc`, `*.bpc` — text and binary PCK kernels, from [`NAIF_PCK_URL`]
 /// - `*.tf` — text frame kernels, from [`NAIF_FK_SATELLITES_URL`]
+/// - `*.tls` — leap-second kernels, from [`NAIF_LSK_URL`]
 pub fn resolve_url(filename: &str) -> Option<String> {
     if filename.contains("://") {
         return Some(filename.to_string());
@@ -204,6 +221,10 @@ pub fn resolve_url(filename: &str) -> Option<String> {
         return Some(format!("{}{}", NAIF_FK_SATELLITES_URL, filename));
     }
 
+    if filename.ends_with(".tls") {
+        return Some(format!("{}{}", NAIF_LSK_URL, filename));
+    }
+
     None
 }
 
@@ -211,6 +232,7 @@ pub fn resolve_url(filename: &str) -> Option<String> {
 ///
 /// Uses a longer timeout (600s) suitable for large ephemeris files.
 /// Downloads to a temporary file first, then atomically renames.
+#[cfg(not(feature = "datastore"))]
 pub fn download_file_with_progress<P: AsRef<Path>>(url: &str, path: P) -> Result<()> {
     if let Some(parent) = path.as_ref().parent() {
         fs::create_dir_all(parent).map_err(StarfieldError::IoError)?;
@@ -287,9 +309,38 @@ pub fn download_file_with_progress<P: AsRef<Path>>(url: &str, path: P) -> Result
 
 /// Ensure a data file is available locally, downloading it if necessary.
 ///
+/// With the `datastore` feature the file resolves through the pull-through
+/// cache rooted at `data_dir` (or `~/.cache/starfield/`): local disk, then
+/// the mirror named by `STARFIELD_MIRROR`, then — only with
+/// `STARFIELD_ALLOW_UPSTREAM=1` — the archive. A flat file the previous
+/// downloader left under its plain name in that directory is adopted on
+/// first use, validated like a download, so nothing is fetched twice. The
+/// returned path is content-addressed and stays valid until an explicit
+/// `gc`. Use [`crate::data::download_or_cache_with`] to supply the store.
+///
+/// Without the feature, checks the directory for the file and downloads it
+/// directly from the archive if absent.
+#[cfg(feature = "datastore")]
+pub fn download_or_cache(filename: &str, data_dir: Option<&Path>) -> Result<PathBuf> {
+    use super::artifacts::{adopt_legacy_cache_from, artifact_for, store_for};
+
+    let store = store_for(data_dir)?;
+    let artifact = artifact_for(filename)?;
+    if !filename.contains("://") {
+        let legacy_dir = data_dir
+            .map(Path::to_path_buf)
+            .unwrap_or_else(get_cache_dir);
+        adopt_legacy_cache_from(&store, &artifact, &legacy_dir.join(filename));
+    }
+    Ok(store.get(&artifact)?)
+}
+
+/// Ensure a data file is available locally, downloading it if necessary.
+///
 /// Checks `data_dir` (or the default cache `~/.cache/starfield/`) for the file.
 /// If not found, resolves the URL from the filename and downloads it.
 /// Returns the path to the local file.
+#[cfg(not(feature = "datastore"))]
 pub fn download_or_cache(filename: &str, data_dir: Option<&Path>) -> Result<PathBuf> {
     let dir = match data_dir {
         Some(d) => {
@@ -319,7 +370,23 @@ pub fn download_or_cache(filename: &str, data_dir: Option<&Path>) -> Result<Path
     Ok(local_path)
 }
 
+/// Resolve the Hipparcos catalogue through the pull-through cache.
+///
+/// A `hip_main.dat` left by the previous downloader in `~/.cache/starfield/`,
+/// or one placed in the working directory for CI, is adopted first.
+#[cfg(feature = "datastore")]
+pub fn download_hipparcos() -> Result<PathBuf> {
+    use super::artifacts::{adopt_legacy_cache_from, hipparcos_artifact, store_for};
+
+    let store = store_for(None)?;
+    let artifact = hipparcos_artifact();
+    let _ = adopt_legacy_cache_from(&store, &artifact, &get_cache_dir().join("hip_main.dat"))
+        || adopt_legacy_cache_from(&store, &artifact, Path::new("hip_main.dat"));
+    Ok(store.get(&artifact)?)
+}
+
 /// Download the Hipparcos catalog
+#[cfg(not(feature = "datastore"))]
 pub fn download_hipparcos() -> Result<PathBuf> {
     let cache_dir = ensure_cache_dir().map_err(StarfieldError::IoError)?;
 
@@ -441,13 +508,16 @@ mod tests {
 
     #[test]
     fn test_download_or_cache_cached_file() {
+        // A file already in data_dir is served without any network access.
+        // It must look like a real SPK: the cache validates what it adopts.
         let dir = tempfile::tempdir().unwrap();
         let test_file = dir.path().join("test.bsp");
-        std::fs::write(&test_file, b"fake bsp data").unwrap();
+        let mut bytes = b"DAF/SPK ".to_vec();
+        bytes.extend(std::iter::repeat_n(0u8, 2048));
+        std::fs::write(&test_file, &bytes).unwrap();
 
-        let result = download_or_cache("test.bsp", Some(dir.path()));
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), test_file);
+        let result = download_or_cache("test.bsp", Some(dir.path())).unwrap();
+        assert_eq!(std::fs::read(result).unwrap(), bytes);
     }
 
     #[test]
@@ -473,7 +543,7 @@ mod tests {
         ];
 
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(15))
             .build()
             .expect("Failed to build HTTP client");
 

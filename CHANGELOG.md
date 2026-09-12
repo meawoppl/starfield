@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.2
+
+- Data files resolve through `starfield-datastore` (new default-on `datastore` feature, rollout step 5): `Loader::open`, `open_text_pck`, `open_binary_pck`, `ensure_file`, `download_hipparcos` and the Gaia shard downloader go `local disk → STARFIELD_MIRROR → upstream (only with STARFIELD_ALLOW_UPSTREAM=1)`, with every fetch validated by starfield's own kernel magic numbers before it is cached. A flat `~/.cache/starfield/<file>` (or `hip_main.dat`, or a Gaia shard) left by the old downloader is adopted on first use, so nothing is re-downloaded. See `docs/datastore.md`
+- New `data::artifacts`: public `kernel_artifact`, `hipparcos_artifact`, `gaia_artifact`, `gaia_md5sums_artifact`, `url_artifact`, `artifact_for` and the hermetic `download_or_cache_with(&Datastore, name)`, so other consumers and the server's manifest tooling build byte-identical keys (`naif/spk/<file>`, `naif/spk/satellites/<file>`, `naif/pck/<file>`, `naif/fk/<file>`, `naif/lsk/<file>`, `cds/I/239/hip_main.dat`, `gaia/<dr>/gaia_source/<file>`, `url/<sha256 of any other http(s) URL>`); `GaiaRelease` names the three releases' shard and MD5 locations. A resolved Gaia shard is exposed under its archive name in `~/.cache/starfield/gaia/` so suffix-based gzip detection keeps working; a shard failing its archive MD5 is dropped from the cache
+- Gaia shard discovery reads the release's MD5 manifest instead of scraping the archive's directory page, which is now a JavaScript shell; an empty list is an error rather than a fabricated enumeration
+- New `StarfieldError::Datastore(#[from] DatastoreError)`; `resolve_url` knows `.tls` (`NAIF_LSK_URL`); `HIPPARCOS_URL`, `JPL_BSP_URL`, `NAIF_SATELLITES_URL` are public
+- Without the feature the direct downloader is unchanged
+
 ## 0.16.1
 
 - `PlanetaryConstants::frame_for` now falls back to the embedded IAU 2015 table when no text kernel read so far defines the body, as the plan promised: `PlanetaryConstants::new().frame_for(499)` works offline, and kernel values still win when loaded. Earth (`ItrsFrame`) and the Moon with a principal-axes kernel (`PckFrame`) are unchanged
