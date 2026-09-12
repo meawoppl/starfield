@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufRead, BufReader, Read};
+#[cfg(not(feature = "datastore"))]
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 // No need for sync primitives yet
@@ -17,6 +19,7 @@ use regex::Regex;
 // Base URL for Gaia DR1 catalog
 const GAIA_DR1_BASE_URL: &str = "https://cdn.gea.esac.esa.int/Gaia/gdr1/gaia_source/csv/";
 // URL to the MD5SUMS file
+#[cfg(not(feature = "datastore"))]
 const GAIA_MD5SUMS_URL: &str = "https://cdn.gea.esac.esa.int/Gaia/gdr1/gaia_source/csv/MD5SUM.txt";
 
 /// Get the Gaia cache directory path
@@ -44,6 +47,7 @@ fn file_exists_and_not_empty<P: AsRef<Path>>(path: P) -> bool {
 }
 
 /// Download a file from URL to a local path
+#[cfg(not(feature = "datastore"))]
 fn download_file<P: AsRef<Path>>(url: &str, path: P) -> Result<()> {
     // Create parent directories if they don't exist
     if let Some(parent) = path.as_ref().parent() {
@@ -171,8 +175,22 @@ fn calculate_md5<P: AsRef<Path>>(path: P) -> Result<String> {
     Ok(format!("{:x}", digest))
 }
 
-/// Download the MD5SUMS file and parse it
-fn download_md5sums() -> Result<HashMap<String, String>> {
+/// The release's MD5 manifest, resolved through the pull-through cache. A
+/// copy the previous downloader left in the Gaia cache directory is adopted.
+#[cfg(feature = "datastore")]
+fn md5sums_path() -> Result<PathBuf> {
+    use super::artifacts::{
+        adopt_legacy_cache_from, gaia_md5sums_artifact, store_for, GaiaRelease,
+    };
+
+    let store = store_for(None)?;
+    let artifact = gaia_md5sums_artifact(GaiaRelease::Dr1);
+    adopt_legacy_cache_from(&store, &artifact, &get_gaia_cache_dir().join("MD5SUM.txt"));
+    Ok(store.get(&artifact)?)
+}
+
+#[cfg(not(feature = "datastore"))]
+fn md5sums_path() -> Result<PathBuf> {
     let cache_dir = ensure_gaia_cache_dir().map_err(StarfieldError::IoError)?;
     let md5sums_path = cache_dir.join("MD5SUM.txt");
 
@@ -180,6 +198,12 @@ fn download_md5sums() -> Result<HashMap<String, String>> {
     if !file_exists_and_not_empty(&md5sums_path) {
         download_file(GAIA_MD5SUMS_URL, &md5sums_path)?;
     }
+    Ok(md5sums_path)
+}
+
+/// Download the MD5SUMS file and parse it
+fn download_md5sums() -> Result<HashMap<String, String>> {
+    let md5sums_path = md5sums_path()?;
 
     // Parse MD5SUMS file
     let file = File::open(md5sums_path).map_err(StarfieldError::IoError)?;
@@ -271,6 +295,24 @@ pub fn list_cached_gaia_files() -> Result<Vec<PathBuf>> {
         }
     }
 
+    #[cfg(feature = "datastore")]
+    {
+        use super::artifacts::{store_for, GaiaRelease};
+
+        // Shards resolved through the pull-through cache live under their
+        // content address, not in the flat directory.
+        let store = store_for(None)?;
+        let prefix = format!("{}/", GaiaRelease::Dr1.key_prefix());
+        for key in store.keys()? {
+            let name = key.as_str();
+            if name.starts_with(&prefix) && name.ends_with(".csv.gz") {
+                if let Some(path) = store.peek(&key) {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
     Ok(files)
 }
 
@@ -313,11 +355,7 @@ pub fn download_gaia_file(filename: &str) -> Result<PathBuf> {
     // Download checksums
     let checksums = download_md5sums()?;
 
-    // Download the gzipped file if it doesn't exist
-    if !file_exists_and_not_empty(&gz_path) {
-        let file_url = format!("{}{}", GAIA_DR1_BASE_URL, filename);
-        download_file(&file_url, &gz_path)?;
-    }
+    let gz_path = fetch_shard(filename, &gz_path)?;
 
     // Verify the file
     if let Some(expected_md5) = checksums.get(filename) {
@@ -335,6 +373,28 @@ pub fn download_gaia_file(filename: &str) -> Result<PathBuf> {
     println!("File verified and ready for streaming decompression.");
 
     Ok(gz_path)
+}
+
+/// Resolve one shard through the pull-through cache, adopting a copy the
+/// previous downloader left at `legacy` (the flat Gaia cache directory).
+#[cfg(feature = "datastore")]
+fn fetch_shard(filename: &str, legacy: &Path) -> Result<PathBuf> {
+    use super::artifacts::{adopt_legacy_cache_from, gaia_artifact, store_for, GaiaRelease};
+
+    let store = store_for(None)?;
+    let artifact = gaia_artifact(GaiaRelease::Dr1, filename)?;
+    adopt_legacy_cache_from(&store, &artifact, legacy);
+    Ok(store.get(&artifact)?)
+}
+
+/// Download one shard directly into the flat Gaia cache directory.
+#[cfg(not(feature = "datastore"))]
+fn fetch_shard(filename: &str, gz_path: &Path) -> Result<PathBuf> {
+    if !file_exists_and_not_empty(gz_path) {
+        let file_url = format!("{}{}", GAIA_DR1_BASE_URL, filename);
+        download_file(&file_url, gz_path)?;
+    }
+    Ok(gz_path.to_path_buf())
 }
 
 /// Download the entire Gaia catalog (all files)

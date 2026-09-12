@@ -72,6 +72,11 @@ pub enum StarfieldError {
 
     #[error("Ephemeris error: {0}")]
     EphemerisError(#[from] jplephem::JplephemError),
+
+    /// A data file could not be resolved through the pull-through cache.
+    #[cfg(feature = "datastore")]
+    #[error("Datastore error: {0}")]
+    Datastore(#[from] starfield_datastore::DatastoreError),
 }
 
 /// Result type for starfield operations
@@ -88,7 +93,11 @@ impl Loader {
         Self { data_dir: None }
     }
 
-    /// Set a custom data directory
+    /// Set a custom data directory.
+    ///
+    /// With the `datastore` feature the directory becomes the root of a
+    /// content-addressed cache; a flat file already there under its plain
+    /// name (`de421.bsp`) is adopted on first use rather than re-downloaded.
     pub fn with_data_dir<P: AsRef<Path>>(mut self, path: P) -> Self {
         self.data_dir = Some(path.as_ref().to_path_buf());
         self

@@ -1,6 +1,6 @@
 [package]
 name = "starfield"
-version = "0.16.1"
+version = "0.16.2"
 edition = "2021"
 authors = ["Matthew Goodman"]
 description = "Astronomical data reduction toolkit with star catalogs, coordinate systems, and star finding algorithms (inspired by skyfield)"
@@ -40,6 +40,9 @@ md5 = "0.7"                                             # MD5 checksum calculati
 regex = "1.10"                                          # Regular expressions for parsing
 byteorder = "1.5"                                       # Binary data reading/writing
 
+# Pull-through artifact cache (SPICE kernels, catalogues); see docs/datastore.md
+starfield-datastore = { version = "0.1.1", optional = true }
+
 # Error handling and utilities
 thiserror = "2.0"
 log = "0.4"
@@ -72,6 +75,11 @@ tempfile = "3.8"  # Temporary file creation for tests
 # Dev dependencies
 
 [features]
+default = ["datastore"]
+# Resolve data files through the organisation's pull-through cache
+# (local disk -> ephemeris server -> upstream). Off: the legacy direct
+# downloader with a flat ~/.cache/starfield/ layout.
+datastore = ["dep:starfield-datastore"]
 python-tests = ["pyo3", "anyhow"]
 # Optional traits for per-band photometry, measured radial surface-brightness
 # profiles, and isophote shape series. Gated behind a feature so consumers
