@@ -166,8 +166,7 @@ impl GaiaRelease {
 
     /// The archive's MD5 manifest for the release: one line per shard. Part
     /// of the release and immutable, so it is an artifact too
-    /// ([`gaia_md5sums_artifact`]); only the HTML directory listing used to
-    /// discover shard names is fetched live.
+    /// ([`gaia_md5sums_artifact`]) and the source of the shard list.
     pub fn md5sums_url(self) -> &'static str {
         match self {
             Self::Dr1 => "https://cdn.gea.esac.esa.int/Gaia/gdr1/gaia_source/csv/MD5SUM.txt",
@@ -245,8 +244,9 @@ pub fn gaia_artifact(release: GaiaRelease, filename: &str) -> Result<Artifact> {
 /// check, so strict mode still holds: nothing is fetched behind the mirror's
 /// back. URLs carrying userinfo, or with any other scheme, are refused.
 pub fn url_artifact(url: &str) -> Result<Artifact> {
+    // The input is not echoed: a malformed URL may still carry a credential.
     let parsed = url::Url::parse(url)
-        .map_err(|e| StarfieldError::DataError(format!("not a URL: {url:?}: {e}")))?;
+        .map_err(|e| StarfieldError::DataError(format!("not a resolvable URL: {e}")))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(StarfieldError::DataError(format!(
             "only http(s) URLs can be resolved, got {}",
