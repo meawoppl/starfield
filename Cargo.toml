@@ -1,6 +1,6 @@
 [package]
 name = "starfield"
-version = "0.16.1"
+version = "0.16.2"
 edition = "2021"
 authors = ["Matthew Goodman"]
 description = "Astronomical data reduction toolkit with star catalogs, coordinate systems, and star finding algorithms (inspired by skyfield)"
@@ -62,6 +62,7 @@ clap = { version = "4.5.40", features = ["derive"] }
 memmap2 = "0.9"
 uom = "0.37.0"
 sgp4 = "2.3.0"
+starfield-datastore = { version = "0.1", optional = true }
 
 
 [dev-dependencies]
@@ -72,7 +73,13 @@ tempfile = "3.8"  # Temporary file creation for tests
 # Dev dependencies
 
 [features]
+default = ["datastore"]
 python-tests = ["pyo3", "anyhow"]
+# Resolve SPICE kernels through the starfield-datastore pull-through cache
+# (local disk -> organisation mirror -> upstream archive) instead of fetching
+# them straight from JPL and NAIF. Default on; turn it off for a build that
+# talks to the archives directly.
+datastore = ["dep:starfield-datastore"]
 # Optional traits for per-band photometry, measured radial surface-brightness
 # profiles, and isophote shape series. Gated behind a feature so consumers
 # that only need positions/magnitudes don't pay for the larger trait surface.

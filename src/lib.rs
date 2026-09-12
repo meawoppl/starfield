@@ -72,6 +72,14 @@ pub enum StarfieldError {
 
     #[error("Ephemeris error: {0}")]
     EphemerisError(#[from] jplephem::JplephemError),
+
+    /// A kernel could not be resolved through the `starfield-datastore` cache:
+    /// the local cache missed and the mirror was unreachable, the bytes that
+    /// arrived failed the artifact's content check, or the cache itself could
+    /// not be written. Only present with the `datastore` feature.
+    #[cfg(feature = "datastore")]
+    #[error("Datastore error: {0}")]
+    Datastore(#[from] starfield_datastore::DatastoreError),
 }
 
 /// Result type for starfield operations
@@ -170,9 +178,13 @@ impl Loader {
 
     /// Open a data file by name, automatically downloading it if necessary.
     ///
-    /// Recognizes `.bsp` ephemeris filenames (e.g. `"de421.bsp"`, `"de430t.bsp"`)
-    /// and downloads them from JPL/NAIF servers to the cache directory.
-    /// Files are cached in `data_dir` (if set) or `~/.cache/starfield/`.
+    /// Recognizes `.bsp` ephemeris filenames (e.g. `"de421.bsp"`, `"de430t.bsp"`).
+    /// With the `datastore` feature they are resolved through
+    /// `starfield-datastore` — local cache, then the
+    /// organisation's mirror, then the upstream archive under
+    /// `STARFIELD_ALLOW_UPSTREAM=1` — and otherwise downloaded straight from
+    /// JPL/NAIF. Either way the cache is `data_dir` (if set) or
+    /// `~/.cache/starfield/`.
     ///
     /// # Example
     ///
@@ -186,6 +198,9 @@ impl Loader {
     }
 
     /// Open a BSP file and return an Ephemeris, downloading if necessary.
+    ///
+    /// Resolution is [`Loader::open`]'s: the datastore chain with the
+    /// `datastore` feature, a direct archive download without it.
     ///
     /// # Example
     ///
@@ -202,7 +217,9 @@ impl Loader {
     ///
     /// Text kernels are the plain-text `.tpc` and `.tf` files, such as
     /// `pck00011.tpc`. The file is looked up in `data_dir` (if set) or in
-    /// `~/.cache/starfield/`.
+    /// `~/.cache/starfield/`, and fetched through
+    /// [`download_or_cache`](data::download_or_cache) — the datastore chain
+    /// with the `datastore` feature — when it is not there.
     ///
     /// # Example
     ///
@@ -223,7 +240,8 @@ impl Loader {
     /// Binary PCK kernels are the `.bpc` files that hold the orientation of a
     /// body-fixed frame, such as `moon_pa_de421_1900-2050.bpc`. The file is
     /// looked up in `data_dir` (if set) or in `~/.cache/starfield/`, and
-    /// downloaded from NAIF when it is not there.
+    /// fetched through [`download_or_cache`](data::download_or_cache) — the
+    /// datastore chain with the `datastore` feature — when it is not there.
     ///
     /// Hand the result to
     /// [`PlanetaryConstants::read_binary`](planetarylib::PlanetaryConstants::read_binary)
@@ -243,7 +261,10 @@ impl Loader {
 
     /// Ensure a data file is available locally, downloading if needed.
     ///
-    /// Returns the local path without opening or parsing the file.
+    /// Returns the local path without opening or parsing the file. Kernels go
+    /// through the datastore chain with the `datastore` feature, so the path
+    /// returned is the cache's content-addressed blob rather than
+    /// `<data_dir>/<filename>`; use it as returned.
     pub fn ensure_file(&self, filename: &str) -> Result<std::path::PathBuf> {
         data::download_or_cache(filename, self.data_dir.as_deref())
     }
