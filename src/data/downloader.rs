@@ -43,6 +43,15 @@ pub const NAIF_FK_SATELLITES_URL: &str =
 /// Base URL for NAIF leap-second kernels (`.tls`, e.g. `naif0012.tls`).
 pub const NAIF_LSK_URL: &str = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/";
 
+/// NAIF's own copy of the planetary SPKs (`de440.bsp`), the same files JPL
+/// serves from [`JPL_BSP_URL`]; older releases sit under `a_old_versions/`.
+pub const NAIF_PLANETS_URL: &str =
+    "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/";
+
+/// Superseded planetary SPKs on NAIF (`de421.bsp`, `de405.bsp`).
+pub const NAIF_PLANETS_OLD_URL: &str =
+    "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/a_old_versions/";
+
 /// Get the cache directory path
 pub fn get_cache_dir() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());

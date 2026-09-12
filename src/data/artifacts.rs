@@ -18,7 +18,7 @@ use starfield_datastore::{
 
 use crate::data::downloader::{
     HIPPARCOS_URL, JPL_BSP_URL, NAIF_FK_SATELLITES_URL, NAIF_LSK_URL, NAIF_PCK_URL,
-    NAIF_SATELLITES_URL,
+    NAIF_PLANETS_OLD_URL, NAIF_PLANETS_URL, NAIF_SATELLITES_URL,
 };
 use crate::planetarylib::TEXT_MAGIC_NUMBERS;
 use crate::{Result, StarfieldError};
@@ -164,9 +164,10 @@ impl GaiaRelease {
         }
     }
 
-    /// The archive's MD5 manifest for the release. Discovery data, fetched
-    /// live rather than through the cache: it is how the shard list and the
-    /// per-shard MD5 are learned in the first place.
+    /// The archive's MD5 manifest for the release: one line per shard. Part
+    /// of the release and immutable, so it is an artifact too
+    /// ([`gaia_md5sums_artifact`]); only the HTML directory listing used to
+    /// discover shard names is fetched live.
     pub fn md5sums_url(self) -> &'static str {
         match self {
             Self::Dr1 => "https://cdn.gea.esac.esa.int/Gaia/gdr1/gaia_source/csv/MD5SUM.txt",
@@ -236,61 +237,63 @@ pub fn gaia_artifact(release: GaiaRelease, filename: &str) -> Result<Artifact> {
 
 /// The artifact for a file named by a full URL.
 ///
-/// A URL under one of the archive directories starfield knows maps to the
-/// same canonical key as the bare filename would, so `Loader::open` with a
-/// URL and with a name hit the same object. Any other URL gets a key derived
-/// from its host and path (`url/<host>/<path>`, with a short digest of the
-/// query when there is one) and the default content check, so strict mode
-/// still holds: nothing is fetched behind the mirror's back.
+/// A kernel URL under one of the archive directories starfield knows maps
+/// to the same canonical key as the bare filename would, so `Loader::open`
+/// with a URL and with a name hit the same object; the caller's exact URL is
+/// kept as the source. Any other `http(s)` URL gets the key
+/// `url/<sha256 of the URL without its fragment>` and the default content
+/// check, so strict mode still holds: nothing is fetched behind the mirror's
+/// back. URLs carrying userinfo, or with any other scheme, are refused.
 pub fn url_artifact(url: &str) -> Result<Artifact> {
+    let parsed = url::Url::parse(url)
+        .map_err(|e| StarfieldError::DataError(format!("not a URL: {url:?}: {e}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(StarfieldError::DataError(format!(
+            "only http(s) URLs can be resolved, got {}",
+            parsed.scheme()
+        )));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(StarfieldError::DataError(
+            "a data URL must not carry userinfo; configure credentials for the host instead".into(),
+        ));
+    }
     let canonical = [
         JPL_BSP_URL,
+        NAIF_PLANETS_URL,
+        NAIF_PLANETS_OLD_URL,
         NAIF_SATELLITES_URL,
         NAIF_PCK_URL,
         NAIF_FK_SATELLITES_URL,
         NAIF_LSK_URL,
     ]
     .iter()
-    .find_map(|base| url.strip_prefix(base))
-    .filter(|rest| !rest.contains('/'))
+    .filter_map(|base| url.strip_prefix(base))
+    .find(|rest| !rest.is_empty() && !rest.contains(['/', '?', '#']))
     .and_then(kernel_artifact);
-    if let Some(artifact) = canonical {
+    if let Some(mut artifact) = canonical {
+        artifact.sources = vec![Source::new(url)];
         return Ok(artifact);
     }
     if url == HIPPARCOS_URL {
         return Ok(hipparcos_artifact());
     }
-    let (scheme_rest, fragment) = url.split_once('#').unwrap_or((url, ""));
-    let _ = fragment;
-    let without_scheme = scheme_rest
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .ok_or_else(|| StarfieldError::DataError(format!("not a URL: {url}")))?;
-    let (path_part, query) = without_scheme
-        .split_once('?')
-        .map(|(p, q)| (p, Some(q)))
-        .unwrap_or((without_scheme, None));
-    let mut text = String::from("url/");
-    for c in path_part.trim_end_matches('/').chars() {
-        text.push(if c.is_ascii_alphanumeric() || "-._/".contains(c) {
-            c
-        } else {
-            '_'
-        });
-    }
-    if let Some(query) = query {
-        text.push_str(&format!("-{:x}", md5::compute(query.as_bytes()))[..17]);
-    }
-    let text = text.replace("//", "/").replace("/../", "/_/");
+    let mut without_fragment = parsed.clone();
+    without_fragment.set_fragment(None);
+    let digest = {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(without_fragment.as_str().as_bytes()))
+    };
+    let mut origin = without_fragment.clone();
+    origin.set_query(None);
     Ok(
-        Artifact::new(key(text)?, vec![Source::new(url)]).with_provenance(Provenance {
-            description: format!(
-                "File fetched from {}",
-                scheme_rest.split('?').next().unwrap_or("")
-            ),
-            license: String::new(),
-            citation: None,
-        }),
+        Artifact::new(key(format!("url/{digest}"))?, vec![Source::new(url)]).with_provenance(
+            Provenance {
+                description: format!("File fetched from {origin}"),
+                license: String::new(),
+                citation: None,
+            },
+        ),
     )
 }
 
@@ -516,31 +519,65 @@ mod tests {
     }
 
     #[test]
-    fn urls_map_to_canonical_keys_when_known_and_stable_keys_otherwise() {
-        let canonical = url_artifact(&format!("{JPL_BSP_URL}de421.bsp")).unwrap();
-        assert_eq!(canonical.key.as_str(), "naif/spk/de421.bsp");
+    fn urls_map_to_canonical_keys_when_known_and_digest_keys_otherwise() {
+        for base in [JPL_BSP_URL, NAIF_PLANETS_URL, NAIF_PLANETS_OLD_URL] {
+            let url = format!("{base}de421.bsp");
+            let canonical = url_artifact(&url).unwrap();
+            assert_eq!(canonical.key.as_str(), "naif/spk/de421.bsp");
+            assert_eq!(
+                canonical.sources[0].url, url,
+                "the caller's URL is the source"
+            );
+        }
         assert_eq!(
             url_artifact(HIPPARCOS_URL).unwrap().key.as_str(),
             HIPPARCOS_KEY
         );
+        assert!(url_artifact(&format!("{JPL_BSP_URL}sub/de421.bsp"))
+            .unwrap()
+            .key
+            .as_str()
+            .starts_with("url/"));
+
         let other = url_artifact("https://example.org/kernels/custom.bsp").unwrap();
-        assert_eq!(other.key.as_str(), "url/example.org/kernels/custom.bsp");
-        let queried = url_artifact("https://example.org/get?file=custom.bsp&v=2").unwrap();
-        assert!(queried.key.as_str().starts_with("url/example.org/get-"));
+        assert!(other.key.as_str().starts_with("url/"), "{}", other.key);
+        assert_eq!(other.key.as_str().len(), "url/".len() + 64);
+        assert_eq!(
+            other.sources[0].url,
+            "https://example.org/kernels/custom.bsp"
+        );
+        assert!(other
+            .provenance
+            .description
+            .contains("https://example.org/kernels/custom.bsp"));
+        let different = [
+            "https://example.org/kernels/custom.bsp?v=2",
+            "http://example.org/kernels/custom.bsp",
+            "https://example.org:8443/kernels/custom.bsp",
+        ];
+        for url in different {
+            assert_ne!(other.key, url_artifact(url).unwrap().key, "{url}");
+        }
         assert_ne!(
-            queried.key,
-            url_artifact("https://example.org/get?file=other.bsp")
-                .unwrap()
-                .key
+            url_artifact("https://example.org/a:b").unwrap().key,
+            url_artifact("https://example.org/a_b").unwrap().key
         );
         assert_eq!(
-            url_artifact("https://example.org/a/../b")
+            other.key,
+            url_artifact("https://example.org/kernels/custom.bsp#frag")
                 .unwrap()
-                .key
-                .as_str(),
-            "url/example.org/a/_/b"
+                .key,
+            "a fragment is not part of identity"
         );
+        let queried = url_artifact("https://example.org/get?file=custom.bsp&v=2").unwrap();
+        assert!(
+            !queried.provenance.description.contains("file="),
+            "no query in provenance"
+        );
+
         assert!(url_artifact("not a url").is_err());
+        assert!(url_artifact("ftp://example.org/x.bsp").is_err());
+        assert!(url_artifact("https://user:pw@example.org/x.bsp").is_err());
         assert!(matches!(
             artifact_for("mystery.xyz"),
             Err(StarfieldError::DataError(_))

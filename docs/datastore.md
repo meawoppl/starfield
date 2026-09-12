@@ -19,7 +19,7 @@ key. The parser validates the format afterwards, as before.
 
 | Setting | Env | Meaning |
 |---|---|---|
-| Mirror | `STARFIELD_MIRROR=http://cf-services.<tailnet>.ts.net:8080` | The ephemeris server. On the tailnet this is all a client needs. |
+| Mirror | `STARFIELD_MIRROR=http://cf-services.tail944341.ts.net:8080` | The ephemeris server. On the tailnet this is all a client needs. |
 | Upstream | `STARFIELD_ALLOW_UPSTREAM=1` | Permit direct archive downloads: outside contributors, GitHub-hosted CI. |
 | Offline | `STARFIELD_OFFLINE=1` | Local disk only. What CI sets once the cache is warm. |
 | Cache root | `STARFIELD_CACHE_DIR` | Default `~/.cache/starfield`, shared with the old downloader. |
@@ -46,7 +46,7 @@ a relocated upstream changes a source URL, never a key:
 | `naif0012.tls` | `naif/lsk/<file>` |
 | `hip_main.dat` | `cds/I/239/hip_main.dat` |
 | `GaiaSource_….csv.gz`, `MD5SUM.txt` | `gaia/<dr1|dr2|dr3>/gaia_source/<file>` |
-| any other full URL | `url/<host>/<path>` (plus a digest of the query) |
+| any other `http(s)` URL | `url/<sha256 of the URL without fragment>` |
 
 `starfield::data::{kernel_artifact, hipparcos_artifact, gaia_artifact,
 gaia_md5sums_artifact, url_artifact, artifact_for}` build these; use them
@@ -76,7 +76,10 @@ legacy cache.
 
 Query-shaped services — HORIZONS, SBDB — are not artifacts and are unchanged.
 The Gaia archive's HTML directory listing is fetched live to discover shard
-names; the shards and MD5 manifests themselves are artifacts. A build with
+names; the shards and MD5 manifests themselves are artifacts. A resolved
+shard is exposed under its archive name in `~/.cache/starfield/gaia/` (a hard
+link to the validated blob), so readers that detect gzip from the `.gz`
+suffix keep working. A build with
 `default-features = false` keeps the old direct downloader.
 
 ## Live tests

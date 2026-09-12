@@ -42,6 +42,8 @@ byteorder = "1.5"                                       # Binary data reading/wr
 
 # Pull-through artifact cache (SPICE kernels, catalogues); see docs/datastore.md
 starfield-datastore = { version = "0.1.1", optional = true }
+url = { version = "2", optional = true }
+sha2 = { version = "0.10", optional = true }
 
 # Error handling and utilities
 thiserror = "2.0"
@@ -79,7 +81,7 @@ default = ["datastore"]
 # Resolve data files through the organisation's pull-through cache
 # (local disk -> ephemeris server -> upstream). Off: the legacy direct
 # downloader with a flat ~/.cache/starfield/ layout.
-datastore = ["dep:starfield-datastore"]
+datastore = ["dep:starfield-datastore", "dep:url", "dep:sha2"]
 python-tests = ["pyo3", "anyhow"]
 # Optional traits for per-band photometry, measured radial surface-brightness
 # profiles, and isophote shape series. Gated behind a feature so consumers

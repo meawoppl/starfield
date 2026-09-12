@@ -35,8 +35,14 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
+      - name: Run clippy without default features
+        run: cargo clippy --no-default-features -- -D warnings
+
       - name: Run standard tests
         run: cargo test
+
+      - name: Run tests without default features
+        run: cargo test --no-default-features
 
   python-comparison:
     name: Python Comparison Tests

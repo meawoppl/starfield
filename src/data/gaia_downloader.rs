@@ -9,14 +9,15 @@ use std::io::{self, BufRead, BufReader, Read};
 #[cfg(not(feature = "datastore"))]
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+#[cfg(not(feature = "datastore"))]
 use std::time::Duration;
 // No need for sync primitives yet
 
 use crate::Result;
 use crate::StarfieldError;
-use regex::Regex;
 
 // Base URL for Gaia DR1 catalog
+#[cfg(not(feature = "datastore"))]
 const GAIA_DR1_BASE_URL: &str = "https://cdn.gea.esac.esa.int/Gaia/gdr1/gaia_source/csv/";
 // URL to the MD5SUMS file
 #[cfg(not(feature = "datastore"))]
@@ -224,50 +225,24 @@ fn download_md5sums() -> Result<HashMap<String, String>> {
     Ok(checksums)
 }
 
-/// List all files in the Gaia DR1 catalog index
+/// Every `gaia_source` shard in the release, from its MD5 manifest.
+///
+/// The archive's directory page is a JavaScript shell with no anchors in
+/// it, so it cannot be scraped; the MD5 manifest is the authoritative,
+/// immutable list of shards and is cached like any artifact. An empty list
+/// is an error, never a guess.
 fn list_gaia_files() -> Result<Vec<String>> {
-    // Get the index page containing the file list
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| StarfieldError::DataError(format!("Failed to create HTTP client: {}", e)))?;
-
-    println!("Fetching Gaia catalog index...");
-    let response = client
-        .get(GAIA_DR1_BASE_URL)
-        .send()
-        .map_err(|e| StarfieldError::DataError(format!("Failed to fetch Gaia index: {}", e)))?;
-
-    if !response.status().is_success() {
-        return Err(StarfieldError::DataError(format!(
-            "Failed to fetch Gaia index, status: {}",
-            response.status()
-        )));
-    }
-
-    let html = response
-        .text()
-        .map_err(|e| StarfieldError::DataError(format!("Failed to read index: {}", e)))?;
-
-    // Extract file names using regex
-    // The pattern is likely GaiaSource_XXX-YYY-ZZZ.csv.gz where XXX, YYY, ZZZ are numbers
-    let re = Regex::new(r#"href="(GaiaSource_\d{3}-\d{3}-\d{3}\.csv\.gz)""#)
-        .map_err(|e| StarfieldError::DataError(format!("Failed to compile regex: {}", e)))?;
-
-    let files = re
-        .captures_iter(&html)
-        .map(|cap| cap[1].to_string())
-        .collect::<Vec<_>>();
-
+    let checksums = download_md5sums()?;
+    let mut files: Vec<String> = checksums
+        .into_keys()
+        .filter(|name| name.starts_with("GaiaSource_") && name.ends_with(".csv.gz"))
+        .collect();
+    files.sort();
     if files.is_empty() {
-        println!("Warning: No Gaia files found in index. Using fallback enumeration.");
-        // Fallback to the previous implementation if no files are found
-        let fallback_files = (0..=999)
-            .map(|i| format!("GaiaSource_000-000-{:03}.csv.gz", i))
-            .collect::<Vec<_>>();
-        return Ok(fallback_files);
+        return Err(StarfieldError::DataError(
+            "the Gaia MD5 manifest lists no GaiaSource_*.csv.gz shards".to_string(),
+        ));
     }
-
     println!("Found {} Gaia catalog files", files.len());
     Ok(files)
 }
@@ -295,24 +270,6 @@ pub fn list_cached_gaia_files() -> Result<Vec<PathBuf>> {
         }
     }
 
-    #[cfg(feature = "datastore")]
-    {
-        use super::artifacts::{store_for, GaiaRelease};
-
-        // Shards resolved through the pull-through cache live under their
-        // content address, not in the flat directory.
-        let store = store_for(None)?;
-        let prefix = format!("{}/", GaiaRelease::Dr1.key_prefix());
-        for key in store.keys()? {
-            let name = key.as_str();
-            if name.starts_with(&prefix) && name.ends_with(".csv.gz") {
-                if let Some(path) = store.peek(&key) {
-                    files.push(path);
-                }
-            }
-        }
-    }
-
     Ok(files)
 }
 
@@ -333,23 +290,37 @@ fn verify_file<P: AsRef<Path>>(path: P, expected_md5: &str) -> Result<bool> {
     Ok(valid)
 }
 
-/// Download and verify a specific Gaia file
+/// A shard name as the archive lists it: a bare file name, no path.
+fn validate_shard_name(filename: &str) -> Result<()> {
+    if filename.is_empty() || filename.contains(['/', '\\']) || filename == "." || filename == ".."
+    {
+        return Err(StarfieldError::DataError(format!(
+            "Gaia shard name must be a bare filename, got {filename:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// Download and verify a specific Gaia file.
+///
+/// Returns the gzipped shard under its archive name in the Gaia cache
+/// directory (`~/.cache/starfield/gaia/<file>`); with the `datastore`
+/// feature that path is a hard link (or copy) of the validated blob in the
+/// pull-through cache, so readers that detect gzip from the `.gz` suffix
+/// keep working. A shard whose MD5 does not match the release manifest is
+/// dropped from the cache and reported.
 pub fn download_gaia_file(filename: &str) -> Result<PathBuf> {
+    validate_shard_name(filename)?;
     let cache_dir = ensure_gaia_cache_dir().map_err(StarfieldError::IoError)?;
-
-    // Check if the file is a *.csv.gz and extract base name
-    let base_name = if filename.ends_with(".csv.gz") {
-        filename.trim_end_matches(".gz").to_string()
-    } else {
-        filename.to_string()
-    };
-
-    let csv_path = cache_dir.join(&base_name);
     let gz_path = cache_dir.join(filename);
 
-    // If the CSV exists, we've already processed this file
-    if file_exists_and_not_empty(&csv_path) {
-        return Ok(csv_path);
+    #[cfg(not(feature = "datastore"))]
+    {
+        // If the decompressed CSV exists, we've already processed this file
+        let csv_path = cache_dir.join(filename.trim_end_matches(".gz"));
+        if file_exists_and_not_empty(&csv_path) {
+            return Ok(csv_path);
+        }
     }
 
     // Download checksums
@@ -360,6 +331,7 @@ pub fn download_gaia_file(filename: &str) -> Result<PathBuf> {
     // Verify the file
     if let Some(expected_md5) = checksums.get(filename) {
         if !verify_file(&gz_path, expected_md5)? {
+            discard_shard(filename, &gz_path)?;
             return Err(StarfieldError::DataError(format!(
                 "MD5 checksum verification failed for {}",
                 filename
@@ -375,16 +347,42 @@ pub fn download_gaia_file(filename: &str) -> Result<PathBuf> {
     Ok(gz_path)
 }
 
-/// Resolve one shard through the pull-through cache, adopting a copy the
-/// previous downloader left at `legacy` (the flat Gaia cache directory).
+/// Resolve one shard through the environment-configured store; see
+/// [`fetch_shard_with`].
 #[cfg(feature = "datastore")]
-fn fetch_shard(filename: &str, legacy: &Path) -> Result<PathBuf> {
-    use super::artifacts::{adopt_legacy_cache_from, gaia_artifact, store_for, GaiaRelease};
+fn fetch_shard(filename: &str, alias: &Path) -> Result<PathBuf> {
+    fetch_shard_with(&super::artifacts::store_for(None)?, filename, alias)
+}
 
-    let store = store_for(None)?;
+/// Resolve one shard through `store` and expose it at `alias`, its archive
+/// name in the flat Gaia cache directory.
+///
+/// A shard the previous downloader left at `alias` is adopted (validated,
+/// then copied into the store) rather than re-fetched. Otherwise the
+/// validated blob is hard-linked to `alias` — or copied when the cache
+/// directory is on another filesystem — so the `.gz` suffix readers key on
+/// survives the content-addressed layout. Hermetic: reads no environment.
+#[cfg(feature = "datastore")]
+pub(crate) fn fetch_shard_with(
+    store: &starfield_datastore::Datastore,
+    filename: &str,
+    alias: &Path,
+) -> Result<PathBuf> {
+    use super::artifacts::{adopt_legacy_cache_from, gaia_artifact, GaiaRelease};
+
     let artifact = gaia_artifact(GaiaRelease::Dr1, filename)?;
-    adopt_legacy_cache_from(&store, &artifact, legacy);
-    Ok(store.get(&artifact)?)
+    adopt_legacy_cache_from(store, &artifact, alias);
+    let blob = store.get(&artifact)?;
+    if !file_exists_and_not_empty(alias) {
+        if let Some(parent) = alias.parent() {
+            fs::create_dir_all(parent).map_err(StarfieldError::IoError)?;
+        }
+        let _ = fs::remove_file(alias);
+        if fs::hard_link(&blob, alias).is_err() {
+            fs::copy(&blob, alias).map_err(StarfieldError::IoError)?;
+        }
+    }
+    Ok(alias.to_path_buf())
 }
 
 /// Download one shard directly into the flat Gaia cache directory.
@@ -395,6 +393,24 @@ fn fetch_shard(filename: &str, gz_path: &Path) -> Result<PathBuf> {
         download_file(&file_url, gz_path)?;
     }
     Ok(gz_path.to_path_buf())
+}
+
+/// Forget a shard whose archive MD5 did not match: the alias goes, and the
+/// store forgets the key (a blob shared with another key is left alone by
+/// the store's own reference counting).
+#[cfg(feature = "datastore")]
+fn discard_shard(filename: &str, alias: &Path) -> Result<()> {
+    use super::artifacts::{gaia_artifact, store_for, GaiaRelease};
+
+    let _ = fs::remove_file(alias);
+    let store = store_for(None)?;
+    store.remove(&gaia_artifact(GaiaRelease::Dr1, filename)?.key)?;
+    Ok(())
+}
+
+#[cfg(not(feature = "datastore"))]
+fn discard_shard(_filename: &str, gz_path: &Path) -> Result<()> {
+    fs::remove_file(gz_path).map_err(StarfieldError::IoError)
 }
 
 /// Download the entire Gaia catalog (all files)
@@ -436,6 +452,126 @@ pub fn download_gaia_catalog(max_files: Option<usize>) -> Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shard_names_must_be_bare_filenames() {
+        for bad in ["", "../x.csv.gz", "a/b.csv.gz", "..", "."] {
+            assert!(validate_shard_name(bad).is_err(), "{bad:?}");
+        }
+        assert!(validate_shard_name("GaiaSource_000-000-000.csv.gz").is_ok());
+    }
+
+    #[cfg(feature = "datastore")]
+    #[test]
+    fn a_resolved_shard_keeps_its_gz_name_and_parses_through_the_catalog_reader() {
+        use crate::catalogs::{GaiaCatalog, StarCatalog};
+        use std::io::Write as _;
+        use std::net::TcpListener;
+
+        // A tiny gzipped gaia_source shard, padded past the cache's minimum size.
+        let mut csv = String::from(
+            "source_id,solution_id,ra,dec,ra_error,dec_error,parallax,parallax_error,pmra,pmdec,phot_g_mean_mag,phot_g_mean_flux,phot_variable_flag,l,b,ecl_lon,ecl_lat\n",
+        );
+        // Pseudo-random values so gzip cannot squeeze the rows below the
+        // cache's 1 KiB minimum.
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % 1_000_000) as f64 / 1_000_000.0
+        };
+        for i in 0..400u64 {
+            csv.push_str(&format!(
+                "{},1635378410,{:.6},{:.6},{:.4},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3},{:.1},NOT_AVAILABLE,{:.5},{:.5},{:.5},{:.5}\n",
+                1000 + i,
+                next() * 360.0,
+                next() * 180.0 - 90.0,
+                next(),
+                next(),
+                next() * 10.0,
+                next(),
+                next() * 20.0 - 10.0,
+                next() * 20.0 - 10.0,
+                6.0 + next() * 12.0,
+                next() * 10_000.0,
+                next() * 360.0,
+                next() * 180.0 - 90.0,
+                next() * 360.0,
+                next() * 180.0 - 90.0
+            ));
+        }
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(csv.as_bytes()).unwrap();
+        let shard = encoder.finish().unwrap();
+        assert!(shard.len() > 1024);
+
+        // A loopback stand-in for the ephemeris server serving that shard.
+        let filename = "GaiaSource_000-000-000.csv.gz";
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let body = shard.clone();
+        let key_path = format!("/artifact/gaia/dr1/gaia_source/{filename}");
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    continue;
+                }
+                let path = line.split_whitespace().nth(1).unwrap_or("/").to_string();
+                loop {
+                    line.clear();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                }
+                let (status, payload): (u16, &[u8]) = if path == key_path {
+                    (200, &body)
+                } else {
+                    (404, &[])
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {status} Stub\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    payload.len()
+                );
+                let _ = stream.write_all(payload);
+            }
+        });
+
+        let root = tempfile::tempdir().unwrap();
+        let store = starfield_datastore::Datastore::builder()
+            .cache_root(root.path().join("store"))
+            .mirror(starfield_datastore::Mirror::Http {
+                base_url: base,
+                writable: false,
+            })
+            .progress(false)
+            .build()
+            .unwrap();
+        let alias = root.path().join("gaia").join(filename);
+        let path = fetch_shard_with(&store, filename, &alias).unwrap();
+        assert_eq!(path, alias, "exposed under its archive name");
+        assert!(path.to_string_lossy().ends_with(".csv.gz"));
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            shard,
+            "alias is the validated blob"
+        );
+        assert_eq!(
+            calculate_md5(&path).unwrap(),
+            format!("{:x}", md5::compute(&shard))
+        );
+
+        let catalog = GaiaCatalog::from_file(&path, 20.0).unwrap();
+        assert_eq!(catalog.len(), 400, "the suffix-detecting reader parses it");
+
+        // A second resolve is served from disk and reuses the alias.
+        let again = fetch_shard_with(&store, filename, &alias).unwrap();
+        assert_eq!(again, alias);
+    }
 
     #[test]
     fn test_cache_dir() {
